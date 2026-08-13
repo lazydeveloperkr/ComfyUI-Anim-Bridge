@@ -40,22 +40,81 @@ ComfyUI, and reload every open ComfyUI browser tab.
 
 1. Run the workflow successfully in ComfyUI once.
 2. Keep the workflow open in a ComfyUI browser tab.
-3. In Builder mode, expose the positive prompt widget as a text User Input.
-4. Expose each image, video, or audio loader that Anim may fill as a User
-   Input.
-5. Keep a save or output node that produces the file Anim should collect.
-6. In Anim, refresh the workflow list and select the open workflow.
+3. Add **Anim Prompt Input** from `Anim / Inputs`. Connect its `prompt`
+   output to the positive prompt input used by the workflow. For the built-in
+   `CLIP Text Encode` node, convert its `text` widget to an input and connect
+   `Anim Prompt Input` there.
+4. If the Storyboard may send image Assets, add **Anim Image References**.
+   Set `max_references` to the maximum number accepted by this workflow. Its
+   `images` output is a ComfyUI IMAGE list in the same order as the Asset
+   references shown in Anim. Connect it to the workflow component that accepts
+   the reference image list.
+5. For video or audio Assets, add **Anim Video References** or **Anim Audio
+   References**, set each `max_references`, and connect the ordered
+   `file_names` output to the matching loader contract in your workflow.
+6. Keep a save or output node that produces the file Anim should collect.
+7. Run the workflow once, keep its browser tab open, then refresh and select it
+   in Anim.
 
 Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
-configuration stay in the ComfyUI workflow. Anim changes only the declared
-User Inputs.
+configuration stay in the ComfyUI workflow. Anim changes only the explicit
+Anim input node types above or legacy Builder User Inputs.
+
+### Prompt node contract
+
+`Anim Prompt Input` is the recommended prompt contract. Anim recognizes it by
+its fixed node type, so it does not guess from the workflow's node names. Its
+STRING output can feed `CLIP Text Encode.text` or another prompt-processing
+node. Do not connect it to the `clip` model socket on `CLIP Text Encode`.
+
+For backward compatibility, a normal text widget exposed as a Builder User
+Input is still supported. The exact widget must be the prompt string field,
+such as `CLIPTextEncode.text`, not a model, conditioning, or CLIP socket.
+
+### Image reference array contract
+
+`Anim Image References` receives one JSON array of uploaded ComfyUI input file
+names. The node validates the array against `max_references`, loads every file,
+and returns:
+
+- `images`: an IMAGE list preserving Asset reference order
+- `masks`: the matching MASK list
+- `file_names`: the same STRING list of uploaded file names
+
+The downstream workflow decides how that list is consumed. A downstream node
+that uses ComfyUI list processing receives the references in order; a node that
+needs the whole list in a single call must implement `INPUT_IS_LIST = True`.
+This is different from an IMAGE batch: references can have different sizes and
+remain separate list entries.
+
+### Video and audio reference array contracts
+
+`Anim Video References` and `Anim Audio References` use the same ordered JSON
+array and capacity contract. They return a STRING list of ComfyUI input file
+names instead of decoding the media, because video and audio node packs use
+different runtime datatypes and loader APIs. Connect `file_names` to the loader
+or adapter expected by the selected workflow. Normal ComfyUI list processing
+handles one file at a time; a custom downstream node that needs the whole array
+in one call must implement `INPUT_IS_LIST = True`.
+
+Reference nodes intentionally reject an empty array. If a media reference is
+optional for some Sequences, route that reference branch through the
+workflow's own switch/bypass logic, or keep a separate text-only workflow open
+and select it in Anim. The Bridge never invents a placeholder image, video, or
+audio file because that would silently change the generated result.
 
 ## Media input capacity
 
-Each declared media input accepts one reference by default. A Builder input
-that intentionally accepts a list may declare a larger `animCapacity` value in
-its input metadata. Anim validates image, video, and audio counts before
-submitting the workflow and does not silently omit extra references.
+The `max_references` field on each Anim Image, Video, or Audio References node
+is the recommended capacity declaration. Anim reads each capacity separately
+and blocks generation when a Sequence contains too many references of that
+media type.
+
+Legacy Builder media inputs accept one reference by default. Only a custom
+input that truly parses a JSON array should declare a larger `animCapacity`.
+Increasing capacity on the built-in `Load Image.image` widget does not make it
+an array input. Anim validates image, video, and audio counts before submitting
+the workflow and does not silently omit extra references.
 
 ## Network and security
 
@@ -78,7 +137,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 1, "status": "ok"}
+{"bridgeVersion": 2, "status": "ok"}
 ```
 
 ## Update
