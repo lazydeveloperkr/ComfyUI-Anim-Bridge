@@ -22,6 +22,7 @@ of workflows open in browser tabs.
 ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   __init__.py
   web\anim_bridge.js
+  web\input_contract.js
 ```
 
 If Git is available, you can install it from a Windows terminal instead:
@@ -73,8 +74,11 @@ such as `CLIPTextEncode.text`, not a model, conditioning, or CLIP socket.
 
 ### Image reference array contract
 
-`Anim Image References` receives one JSON array of uploaded ComfyUI input file
-names. The node validates the array against `max_references`, loads every file,
+`Anim Image References` receives uploaded ComfyUI input file names through its
+hidden `image_paths` field, one file per line. Its card UI supports upload,
+remove, and drag reorder while preserving the saved order. Anim replaces the
+same field at execution time in Asset order. The node validates the paths
+against `max_references`, loads every file,
 and returns:
 
 - `images`: an IMAGE list preserving Asset reference order

@@ -38,11 +38,11 @@ export function explicitAnimInputs(apiGraph) {
           : 'audio'
       inputs.push({
         nodeId,
-        inputName: 'references_json',
+        inputName: kind === 'image' ? 'image_paths' : 'references_json',
         kind,
         label: `${classType.replace(/([a-z])([A-Z])/g, '$1 $2')} · ${kind} files`,
         capacity: normalizedCapacity(node?.inputs?.max_references),
-        encoding: 'jsonArray',
+        encoding: kind === 'image' ? 'newlineSeparated' : 'jsonArray',
       })
     }
   }
@@ -51,9 +51,18 @@ export function explicitAnimInputs(apiGraph) {
 
 export function declaredInputs(workflow, apiGraph) {
   const linearInputs = workflow.activeState?.extra?.linearData?.inputs || []
+  const preferredInputs = explicitAnimInputs(apiGraph)
+  const preferredByKey = new Map(
+    preferredInputs.map((input) => [
+      `${input.nodeId}\0${input.inputName}`,
+      input,
+    ]),
+  )
   const inputs = linearInputs.map((entry) => {
     const nodeId = String(entry[0])
     const inputName = String(entry[1] || '')
+    const preferred = preferredByKey.get(`${nodeId}\0${inputName}`)
+    if (preferred) return preferred
     const node = apiGraph?.[nodeId] || {}
     const classType = String(node.class_type || '')
     const config = entry[2] || {}
@@ -67,7 +76,7 @@ export function declaredInputs(workflow, apiGraph) {
     }
   })
   const keys = new Set(inputs.map((input) => `${input.nodeId}\0${input.inputName}`))
-  for (const input of explicitAnimInputs(apiGraph)) {
+  for (const input of preferredInputs) {
     const key = `${input.nodeId}\0${input.inputName}`
     if (!keys.has(key)) inputs.push(input)
   }

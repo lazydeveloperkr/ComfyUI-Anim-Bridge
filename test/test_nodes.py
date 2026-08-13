@@ -51,12 +51,22 @@ class AnimBridgeNodeTest(unittest.TestCase):
 
     def test_image_references_preserve_array_order(self):
         result = bridge.AnimImageReferences().load(
-            json.dumps(['one.png', 'two.png']),
+            'one.png\ntwo.png',
             2,
         )
         self.assertEqual(result[0], ['image:one.png', 'image:two.png'])
         self.assertEqual(result[1], ['mask:one.png', 'mask:two.png'])
         self.assertEqual(result[2], ['one.png', 'two.png'])
+
+    def test_image_reference_node_declares_hidden_paths_and_configurable_capacity(self):
+        inputs = bridge.AnimImageReferences.INPUT_TYPES()['required']
+
+        self.assertTrue(inputs['image_paths'][1]['hidden'])
+        self.assertEqual(inputs['max_references'][1]['default'], 9)
+        self.assertEqual(inputs['max_references'][1]['max'], 100)
+
+        with self.assertRaisesRegex(ValueError, 'allows 1'):
+            bridge.AnimImageReferences().load('one.png\ntwo.png', 1)
 
     def test_video_and_audio_references_preserve_array_order(self):
         payload = json.dumps(['first.mp4', 'second.mp4'])

@@ -157,17 +157,18 @@ class AnimImageReferences:
     def INPUT_TYPES(cls):
         return {
             'required': {
-                'references_json': (
+                'image_paths': (
                     'STRING',
                     {
-                        'default': '[]',
+                        'default': '',
                         'multiline': True,
+                        'hidden': True,
                     },
                 ),
                 'max_references': (
                     'INT',
                     {
-                        'default': 4,
+                        'default': 9,
                         'min': 1,
                         'max': 100,
                         'step': 1,
@@ -186,11 +187,10 @@ class AnimImageReferences:
         'them from the ComfyUI input folder.'
     )
 
-    def load(self, references_json, max_references):
-        references = _parse_references(
-            references_json,
+    def load(self, image_paths, max_references):
+        references = _parse_path_lines(
+            image_paths,
             max_references,
-            media_label='image',
         )
 
         images = []
@@ -201,6 +201,26 @@ class AnimImageReferences:
             images.append(image)
             masks.append(mask)
         return (images, masks, references)
+
+
+def _parse_path_lines(image_paths, max_references):
+    if not isinstance(image_paths, str):
+        raise ValueError(
+            'Anim Image References expected one image file name per line.'
+        )
+    references = [
+        line.strip()
+        for line in image_paths.splitlines()
+        if line.strip()
+    ]
+    if len(references) > max_references:
+        raise ValueError(
+            f'Anim sent {len(references)} image references, but this node '
+            f'allows {max_references}.'
+        )
+    if not references:
+        raise ValueError('Anim sent no image references to this node.')
+    return references
 
 
 def _reference_input_types(default_capacity):
