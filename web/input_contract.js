@@ -13,6 +13,17 @@ function normalizedCapacity(value) {
   return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
 }
 
+function miniMaxH3ImageCapacity(apiGraph, inputNodeId) {
+  for (const node of Object.values(apiGraph || {})) {
+    if (String(node?.class_type || '') !== 'AnimMiniMaxH3ReferenceToVideo') continue
+    const connection = node?.inputs?.ref_images
+    if (Array.isArray(connection) && String(connection[0]) === String(inputNodeId)) {
+      return 9
+    }
+  }
+  return 100
+}
+
 export function explicitAnimInputs(apiGraph) {
   const inputs = []
   for (const [nodeId, node] of Object.entries(apiGraph || {})) {
@@ -25,6 +36,15 @@ export function explicitAnimInputs(apiGraph) {
         label: 'Anim Prompt Input · prompt',
         capacity: 1,
         encoding: 'scalar',
+      })
+    } else if (classType === 'AnimMiniMaxH3ReferenceImageLoader') {
+      inputs.push({
+        nodeId,
+        inputName: 'image_paths',
+        kind: 'image',
+        label: 'Anim MiniMax H3 Reference Image Loader · image files',
+        capacity: miniMaxH3ImageCapacity(apiGraph, nodeId),
+        encoding: 'newlineSeparated',
       })
     } else if (
       classType === 'AnimImageReferences' ||
