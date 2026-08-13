@@ -17,7 +17,7 @@ const graph = {
   },
   2: {
     class_type: 'AnimImageReferences',
-    inputs: { references_json: '[]', max_references: 6 },
+    inputs: { image_paths: 'one.png\ntwo.png', max_references: 9 },
   },
   3: {
     class_type: 'AnimVideoReferences',
@@ -40,11 +40,11 @@ assert.deepEqual(explicitAnimInputs(graph), [
   },
   {
     nodeId: '2',
-    inputName: 'references_json',
+    inputName: 'image_paths',
     kind: 'image',
     label: 'Anim Image References · image files',
-    capacity: 6,
-    encoding: 'jsonArray',
+    capacity: 9,
+    encoding: 'newlineSeparated',
   },
   {
     nodeId: '3',
