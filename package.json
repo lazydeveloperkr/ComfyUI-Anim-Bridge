@@ -1,0 +1,8 @@
+{
+  "name": "comfyui-anim-bridge",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/input_contract.test.mjs"
+  }
+}

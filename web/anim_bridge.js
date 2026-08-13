@@ -1,5 +1,6 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
+import { declaredInputs } from './input_contract.js'
 
 function makeId() {
   return globalThis.crypto?.randomUUID?.() || `anim-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
@@ -34,30 +35,6 @@ async function digest(value) {
     hash = Math.imul(hash, 16777619)
   }
   return `fnv1a-${(hash >>> 0).toString(16).padStart(8, '0')}`
-}
-
-function declaredInputs(workflow, apiGraph) {
-  const linearInputs = workflow.activeState?.extra?.linearData?.inputs || []
-  return linearInputs.map((entry) => {
-    const nodeId = String(entry[0])
-    const inputName = String(entry[1] || '')
-    const node = apiGraph?.[nodeId] || {}
-    const classType = String(node.class_type || '')
-    const haystack = `${classType} ${inputName}`.toLowerCase()
-    let kind = 'unknown'
-    if (/(audio|sound|voice)/.test(haystack)) kind = 'audio'
-    else if (/(video|movie|clip)/.test(haystack)) kind = 'video'
-    else if (/(image|frame|photo|picture)/.test(haystack)) kind = 'image'
-    else if (/(text|prompt|string|cliptextencode)/.test(haystack)) kind = 'text'
-    const config = entry[2] || {}
-    return {
-      nodeId,
-      inputName,
-      kind,
-      label: config.description || `${classType} · ${inputName}`,
-      capacity: Math.max(1, Number(config.animCapacity || config.capacity || 1)),
-    }
-  })
 }
 
 async function workflowSummary(workflow, activeWorkflow) {
