@@ -4,9 +4,12 @@ ComfyUI Anim Bridge lets Anim discover the workflows that are currently open
 in the ComfyUI frontend. It reports each open tab, workflow revision, Builder
 User Inputs, and output nodes to the same ComfyUI server.
 
-It does not install a video model, change a workflow, or run generation by
-itself. Anim uses it because the standard ComfyUI API does not expose the list
-of workflows open in browser tabs.
+It does not install a video model or run generation by itself. Anim uses it
+because the standard ComfyUI API does not expose the list of workflows open in
+browser tabs. Immediately before generation, the Bridge writes Anim's prompt
+and uploaded media file names into the mapped widgets in the selected open
+workflow. This makes the exact inputs visible in ComfyUI before Anim submits
+the same graph to `/prompt`.
 
 ## Install in ComfyUI-Easy-Install on Windows
 
@@ -60,6 +63,15 @@ ComfyUI, and reload every open ComfyUI browser tab.
 Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
 configuration stay in the ComfyUI workflow. Anim changes only the explicit
 Anim input node types above or legacy Builder User Inputs.
+
+When generation starts, Anim first opens the selected ComfyUI workflow tab and
+fills its mapped prompt, image, video, and audio widgets. `Anim Image
+References` redraws its ordered image cards from the received paths. Anim then
+reads the published workflow back and checks every mapped value. If any widget
+is missing or does not show the exact value, generation stops without sending
+the workflow to `/prompt`. Runtime prompt and reference values do not count as
+a workflow structure revision, so one Sequence's visible inputs do not make
+the next Sequence look stale.
 
 ### MiniMax H3 reference-to-video nodes
 
@@ -161,7 +173,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 3, "status": "ok"}
+{"bridgeVersion": 4, "status": "ok"}
 ```
 
 ## Update

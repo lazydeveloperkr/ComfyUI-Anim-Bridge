@@ -1,3 +1,4 @@
+import asyncio
 import importlib.util
 import json
 import pathlib
@@ -189,7 +190,67 @@ def _load_bridge():
 bridge = _load_bridge()
 
 
+class _JsonRequest:
+    def __init__(self, body):
+        self.body = body
+
+    async def json(self):
+        return self.body
+
+
 class AnimBridgeNodeTest(unittest.TestCase):
+    def setUp(self):
+        bridge._sessions.clear()
+        bridge._commands.clear()
+
+    def test_apply_route_queues_visible_widget_assignments(self):
+        bridge._sessions[('session', 'tab')] = {
+            'lastSeen': bridge.time.time(),
+            'workflows': [{'workflowId': 'workflow'}],
+        }
+
+        payload, status = asyncio.run(
+            bridge.anim_bridge_apply(
+                _JsonRequest(
+                    {
+                        'sessionId': 'session',
+                        'tabId': 'tab',
+                        'workflowId': 'workflow',
+                        'inputs': {
+                            '1.prompt': 'Visible prompt',
+                            '2.image_paths': 'first.png\nlast.png',
+                        },
+                    }
+                )
+            )
+        )
+
+        self.assertEqual(status, 202)
+        command = bridge._commands[payload['commandId']]
+        self.assertEqual(command['type'], 'applyInputs')
+        self.assertEqual(command['inputs']['1.prompt'], 'Visible prompt')
+        self.assertEqual(
+            command['inputs']['2.image_paths'],
+            'first.png\nlast.png',
+        )
+
+    def test_apply_route_rejects_invalid_input_values(self):
+        payload, status = asyncio.run(
+            bridge.anim_bridge_apply(
+                _JsonRequest(
+                    {
+                        'sessionId': 'session',
+                        'tabId': 'tab',
+                        'workflowId': 'workflow',
+                        'inputs': {'1.prompt': {'not': 'a widget value'}},
+                    }
+                )
+            )
+        )
+
+        self.assertEqual(status, 400)
+        self.assertIn('Unsupported value', payload['error'])
+
     def test_prompt_input_returns_the_string(self):
         self.assertEqual(bridge.AnimPromptInput().emit('prompt'), ('prompt',))
 

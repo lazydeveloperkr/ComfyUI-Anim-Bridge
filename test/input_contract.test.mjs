@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 
 import {
+  applyInputValues,
   declaredInputs,
   explicitAnimInputs,
   inferredKind,
+  revisionPayload,
 } from '../web/input_contract.js'
 
 assert.equal(inferredKind('CLIPTextEncode', 'text'), 'text')
@@ -86,6 +88,58 @@ assert.equal(
     graph,
   ).filter((input) => input.nodeId === '1').length,
   1,
+)
+
+const revisionInputs = explicitAnimInputs(graph)
+const revisionA = revisionPayload(graph, revisionInputs, ['143'])
+const graphWithRuntimeValues = structuredClone(graph)
+graphWithRuntimeValues[1].inputs.prompt = 'A generated prompt'
+graphWithRuntimeValues[2].inputs.image_paths = 'new-one.png\nnew-two.png'
+graphWithRuntimeValues[3].inputs.references_json = '["clip.mp4"]'
+const revisionB = revisionPayload(
+  graphWithRuntimeValues,
+  explicitAnimInputs(graphWithRuntimeValues),
+  ['143'],
+)
+assert.deepEqual(revisionB, revisionA)
+
+const structurallyChangedGraph = structuredClone(graphWithRuntimeValues)
+structurallyChangedGraph[143].inputs.length = 241
+assert.notDeepEqual(
+  revisionPayload(
+    structurallyChangedGraph,
+    explicitAnimInputs(structurallyChangedGraph),
+    ['143'],
+  ),
+  revisionA,
+)
+
+const callbackValues = []
+const dirtyNodes = []
+const nodes = {
+  1: {
+    widgets: [{ name: 'prompt', value: '', callback: (value) => callbackValues.push(value) }],
+    setDirtyCanvas: (...args) => dirtyNodes.push(args),
+  },
+  2: {
+    widgets: [{ name: 'image_paths', value: '' }],
+    setDirtyCanvas: (...args) => dirtyNodes.push(args),
+  },
+}
+assert.deepEqual(
+  applyInputValues(
+    (nodeId) => nodes[nodeId],
+    { '1.prompt': 'Visible prompt', '2.image_paths': 'first.png\nlast.png' },
+  ),
+  ['1.prompt', '2.image_paths'],
+)
+assert.equal(nodes[1].widgets[0].value, 'Visible prompt')
+assert.equal(nodes[2].widgets[0].value, 'first.png\nlast.png')
+assert.deepEqual(callbackValues, ['Visible prompt'])
+assert.equal(dirtyNodes.length, 2)
+assert.throws(
+  () => applyInputValues((nodeId) => nodes[nodeId], { '3.prompt': 'missing' }),
+  /node 3 is not open/,
 )
 
 assert.equal(

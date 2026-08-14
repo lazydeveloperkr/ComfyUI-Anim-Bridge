@@ -49,7 +49,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 3, 'status': 'ok'})
+    return _json({'bridgeVersion': 4, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -109,25 +109,83 @@ async def anim_bridge_refresh(request):
     workflow_id = str(body.get('workflowId') or '').strip()
     if not session_id or not tab_id or not workflow_id:
         return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='refresh',
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/apply')
+async def anim_bridge_apply(request):
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    workflow_id = str(body.get('workflowId') or '').strip()
+    inputs = body.get('inputs')
+    if not session_id or not tab_id or not workflow_id:
+        return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not isinstance(inputs, dict) or not inputs:
+        return _json({'error': 'inputs must be a non-empty object'}, 400)
+    for input_id, value in inputs.items():
+        if not isinstance(input_id, str) or '.' not in input_id:
+            return _json({'error': f'Invalid input mapping: {input_id}'}, 400)
+        if not isinstance(value, (str, list)) or (
+            isinstance(value, list)
+            and not all(isinstance(item, str) for item in value)
+        ):
+            return _json(
+                {'error': f'Unsupported value for input mapping: {input_id}'},
+                400,
+            )
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='applyInputs',
+        inputs=inputs,
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+def _workflow_is_open(session_id, tab_id, workflow_id):
     session = _sessions.get((session_id, tab_id))
-    if (
-        session is None
-        or time.time() - session['lastSeen'] > _stale_after_seconds
-        or not any(
+    return (
+        session is not None
+        and time.time() - session['lastSeen'] <= _stale_after_seconds
+        and any(
             item.get('workflowId') == workflow_id
             for item in session['workflows']
         )
-    ):
-        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    )
+
+
+def _queue_command(
+    session_id,
+    tab_id,
+    workflow_id,
+    command_type,
+    inputs=None,
+):
     command_id = uuid.uuid4().hex
-    _commands[command_id] = {
+    command = {
         'commandId': command_id,
+        'type': command_type,
         'sessionId': session_id,
         'tabId': tab_id,
         'workflowId': workflow_id,
         'createdAt': time.time(),
     }
-    return _json({'commandId': command_id}, 202)
+    if inputs is not None:
+        command['inputs'] = dict(inputs)
+    _commands[command_id] = command
+    return command_id
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/commands')

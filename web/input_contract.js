@@ -100,3 +100,51 @@ export function declaredInputs(workflow, apiGraph) {
   }
   return inputs
 }
+
+export function revisionPayload(apiGraph, inputs, outputNodeIds = []) {
+  const graph = JSON.parse(JSON.stringify(apiGraph || {}))
+  for (const input of inputs || []) {
+    const node = graph[String(input.nodeId)]
+    if (node?.inputs && Object.hasOwn(node.inputs, input.inputName)) {
+      node.inputs[input.inputName] = '__ANIM_RUNTIME_INPUT__'
+    }
+  }
+  return {
+    apiGraph: graph,
+    inputs: (inputs || []).map((input) => ({
+      nodeId: String(input.nodeId),
+      inputName: String(input.inputName),
+      kind: String(input.kind),
+      capacity: normalizedCapacity(input.capacity),
+      encoding: String(input.encoding || 'scalar'),
+    })),
+    outputNodeIds: (outputNodeIds || []).map(String),
+  }
+}
+
+export function applyInputValues(getNodeById, inputValues) {
+  if (!inputValues || typeof inputValues !== 'object' || Array.isArray(inputValues)) {
+    throw new Error('Anim input assignments must be an object.')
+  }
+  const applied = []
+  for (const [inputId, value] of Object.entries(inputValues)) {
+    const separator = inputId.indexOf('.')
+    if (separator <= 0 || separator === inputId.length - 1) {
+      throw new Error(`Invalid Anim input mapping: ${inputId}`)
+    }
+    const nodeId = inputId.slice(0, separator)
+    const inputName = inputId.slice(separator + 1)
+    const numericNodeId = Number(nodeId)
+    const node = getNodeById(nodeId) || (
+      Number.isFinite(numericNodeId) ? getNodeById(numericNodeId) : null
+    )
+    if (!node) throw new Error(`ComfyUI node ${nodeId} is not open.`)
+    const widget = node.widgets?.find((item) => item.name === inputName)
+    if (!widget) throw new Error(`ComfyUI widget ${inputId} is not available.`)
+    widget.value = value
+    widget.callback?.(value)
+    node.setDirtyCanvas?.(true, true)
+    applied.push(inputId)
+  }
+  return applied
+}
