@@ -1,6 +1,10 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
-import { declaredInputs } from './input_contract.js'
+import {
+  applyInputValues,
+  declaredInputs,
+  revisionPayload,
+} from './input_contract.js'
 
 function makeId() {
   return globalThis.crypto?.randomUUID?.() || `anim-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
@@ -13,6 +17,7 @@ sessionStorage.setItem('anim-bridge-tab', tabId)
 
 let completedCommandId = ''
 let publishing = false
+let runningCommands = false
 
 function splitImagePaths(value) {
   return String(value || '').split(/\r?\n/).map((item) => item.trim()).filter(Boolean)
@@ -137,6 +142,12 @@ function setupImageReferenceBoard(node) {
     }
   }
 
+  const previousPathsCallback = pathsWidget.callback
+  pathsWidget.callback = (...args) => {
+    previousPathsCallback?.(...args)
+    render()
+  }
+
   uploadButton.onclick = () => picker.click()
   clearButton.onclick = () => setPaths([])
   picker.onchange = async () => {
@@ -210,7 +221,9 @@ async function workflowSummary(workflow, activeWorkflow) {
   return {
     workflowId: workflow.path,
     title: workflow.filename || workflow.key || workflow.path,
-    revision: await digest(state),
+    revision: active
+      ? await digest(revisionPayload(apiGraph, inputs, outputNodeIds))
+      : await digest(state),
     isActive: active,
     isDirty: workflow.isModified === true,
     apiGraph,
@@ -240,17 +253,36 @@ async function publish() {
 }
 
 async function runCommands() {
-  const response = await api.fetchApi(`/anim_bridge/v1/commands?session_id=${encodeURIComponent(sessionId)}&tab_id=${encodeURIComponent(tabId)}`)
-  if (!response.ok) return
-  const payload = await response.json()
-  for (const command of payload.commands || []) {
-    const store = app.extensionManager.workflow
-    const workflow = (store.openWorkflows || []).find((item) => item.path === command.workflowId)
-    if (!workflow) continue
-    await store.openWorkflow(workflow)
-    await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
-    completedCommandId = command.commandId
-    await publish()
+  if (runningCommands) return
+  runningCommands = true
+  try {
+    const response = await api.fetchApi(`/anim_bridge/v1/commands?session_id=${encodeURIComponent(sessionId)}&tab_id=${encodeURIComponent(tabId)}`)
+    if (!response.ok) return
+    const payload = await response.json()
+    for (const command of payload.commands || []) {
+      const store = app.extensionManager.workflow
+      const workflow = (store.openWorkflows || []).find((item) => item.path === command.workflowId)
+      if (!workflow) continue
+      await store.openWorkflow(workflow)
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+      if (command.type === 'applyInputs') {
+        applyInputValues(
+          (nodeId) => app.graph?.getNodeById?.(nodeId),
+          command.inputs,
+        )
+        app.graph?.change?.()
+        app.canvas?.setDirty?.(true, true)
+      }
+      while (publishing) {
+        await new Promise((resolve) => setTimeout(resolve, 25))
+      }
+      completedCommandId = command.commandId
+      await publish()
+    }
+  } catch (error) {
+    console.error('[Anim Bridge] Could not apply workflow inputs.', error)
+  } finally {
+    runningCommands = false
   }
 }
 
