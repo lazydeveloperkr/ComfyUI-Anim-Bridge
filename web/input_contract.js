@@ -13,15 +13,21 @@ function normalizedCapacity(value) {
   return Number.isFinite(parsed) && parsed >= 1 ? Math.floor(parsed) : 1
 }
 
-function miniMaxH3ImageCapacity(apiGraph, inputNodeId) {
+function miniMaxH3Capacity(apiGraph, inputNodeId, kind, declaredCapacity) {
+  const inputName = kind === 'image'
+    ? 'ref_images'
+    : kind === 'video'
+      ? 'ref_videos'
+      : 'ref_audios'
+  const modelCapacity = kind === 'image' ? 9 : 3
   for (const node of Object.values(apiGraph || {})) {
     if (String(node?.class_type || '') !== 'AnimMiniMaxH3ReferenceToVideo') continue
-    const connection = node?.inputs?.ref_images
+    const connection = node?.inputs?.[inputName]
     if (Array.isArray(connection) && String(connection[0]) === String(inputNodeId)) {
-      return 9
+      return Math.min(declaredCapacity, modelCapacity)
     }
   }
-  return 100
+  return declaredCapacity
 }
 
 export function explicitAnimInputs(apiGraph) {
@@ -37,15 +43,6 @@ export function explicitAnimInputs(apiGraph) {
         capacity: 1,
         encoding: 'scalar',
       })
-    } else if (classType === 'AnimMiniMaxH3ReferenceImageLoader') {
-      inputs.push({
-        nodeId,
-        inputName: 'image_paths',
-        kind: 'image',
-        label: 'Anim MiniMax H3 Reference Image Loader · image files',
-        capacity: miniMaxH3ImageCapacity(apiGraph, nodeId),
-        encoding: 'newlineSeparated',
-      })
     } else if (
       classType === 'AnimImageReferences' ||
       classType === 'AnimVideoReferences' ||
@@ -56,12 +53,13 @@ export function explicitAnimInputs(apiGraph) {
         : classType === 'AnimVideoReferences'
           ? 'video'
           : 'audio'
+      const declaredCapacity = normalizedCapacity(node?.inputs?.max_references)
       inputs.push({
         nodeId,
         inputName: kind === 'image' ? 'image_paths' : 'references_json',
         kind,
         label: `${classType.replace(/([a-z])([A-Z])/g, '$1 $2')} · ${kind} files`,
-        capacity: normalizedCapacity(node?.inputs?.max_references),
+        capacity: miniMaxH3Capacity(apiGraph, nodeId, kind, declaredCapacity),
         encoding: kind === 'image' ? 'newlineSeparated' : 'jsonArray',
       })
     }

@@ -1,5 +1,4 @@
 import copy
-import hashlib
 import json
 import time
 import uuid
@@ -10,7 +9,9 @@ import nodes
 from server import PromptServer
 
 try:
-    from comfy_api.latest import io
+    import folder_paths
+    from comfy_api.latest import InputImpl, io
+    from comfy_extras.nodes_audio import load as _load_audio_file
     from comfy_extras.nodes_minimax_h3 import (
         MiniMaxH3ReferenceToVideo as _StockMiniMaxH3ReferenceToVideo,
     )
@@ -18,7 +19,10 @@ except ImportError:
     # Keep the general Anim Bridge available on ComfyUI versions that do not
     # include MiniMax H3 yet. The two H3 nodes are registered only when the
     # corresponding stock node is present.
+    folder_paths = None
+    InputImpl = None
     io = None
+    _load_audio_file = None
     _StockMiniMaxH3ReferenceToVideo = None
 
 
@@ -27,9 +31,14 @@ _commands = {}
 _stale_after_seconds = 15
 _purge_after_seconds = 300
 
-ANIM_MINIMAX_H3_REFERENCE_IMAGES = 'ANIM_MINIMAX_H3_REFERENCE_IMAGES'
+ANIM_IMAGE_REFERENCES = 'ANIM_IMAGE_REFERENCES'
+ANIM_VIDEO_REFERENCES = 'ANIM_VIDEO_REFERENCES'
+ANIM_AUDIO_REFERENCES = 'ANIM_AUDIO_REFERENCES'
 ANIM_IMAGE_REFERENCE_CAPACITY = 100
 MINIMAX_H3_REFERENCE_IMAGE_CAPACITY = 9
+MINIMAX_H3_REFERENCE_VIDEO_CAPACITY = 3
+MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
+MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
 
 
 def _json(payload, status=200):
@@ -186,7 +195,7 @@ class AnimImageReferences:
                 'max_references': (
                     'INT',
                     {
-                        'default': 9,
+                        'default': ANIM_IMAGE_REFERENCE_CAPACITY,
                         'min': 1,
                         'max': 100,
                         'step': 1,
@@ -195,9 +204,9 @@ class AnimImageReferences:
             },
         }
 
-    RETURN_TYPES = ('IMAGE', 'MASK', 'STRING')
-    RETURN_NAMES = ('images', 'masks', 'file_names')
-    OUTPUT_IS_LIST = (True, True, True)
+    RETURN_TYPES = ('IMAGE', 'MASK', 'STRING', ANIM_IMAGE_REFERENCES)
+    RETURN_NAMES = ('images', 'masks', 'file_names', 'references')
+    OUTPUT_IS_LIST = (True, True, True, False)
     FUNCTION = 'load'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
@@ -218,88 +227,37 @@ class AnimImageReferences:
             image, mask = loader.load_image(file_name)
             images.append(image)
             masks.append(mask)
-        return (images, masks, references)
+        return (images, masks, references, tuple(images))
 
 
-class AnimMiniMaxH3ReferenceImageLoader:
-    @classmethod
-    def INPUT_TYPES(cls):
-        return {
-            'required': {
-                'image_paths': (
-                    'STRING',
-                    {
-                        'default': '',
-                        'multiline': True,
-                        'hidden': True,
-                    },
-                ),
-            },
-        }
-
-    RETURN_TYPES = (ANIM_MINIMAX_H3_REFERENCE_IMAGES, 'IMAGE')
-    RETURN_NAMES = ('ref_images', 'image_list')
-    OUTPUT_IS_LIST = (False, True)
-    FUNCTION = 'load_reference_images'
-    CATEGORY = 'Anim/Inputs'
-    DESCRIPTION = (
-        'Receives up to 100 ordered images from Anim. Connect ref_images to '
-        'Anim MiniMax H3 Reference to Video, which enforces the model limit.'
-    )
-
-    @classmethod
-    def VALIDATE_INPUTS(cls, image_paths):
-        try:
-            _parse_path_lines(image_paths, ANIM_IMAGE_REFERENCE_CAPACITY)
-        except ValueError as error:
-            return str(error)
-        return True
-
-    @classmethod
-    def IS_CHANGED(cls, image_paths):
-        references = _parse_path_lines(
-            image_paths,
-            ANIM_IMAGE_REFERENCE_CAPACITY,
-        )
-        hasher = hashlib.sha256()
-        for file_name in references:
-            hasher.update(file_name.encode('utf-8', 'surrogatepass'))
-            hasher.update(b'\0')
-            if hasattr(nodes.LoadImage, 'IS_CHANGED'):
-                changed = nodes.LoadImage.IS_CHANGED(file_name)
-                hasher.update(repr(changed).encode('utf-8', 'surrogatepass'))
-            hasher.update(b'\0')
-        return hasher.hexdigest()
-
-    def load_reference_images(self, image_paths):
-        references = _parse_path_lines(
-            image_paths,
-            ANIM_IMAGE_REFERENCE_CAPACITY,
-        )
-        loader = nodes.LoadImage()
-        images = [loader.load_image(file_name)[0] for file_name in references]
-        return (tuple(images), images)
-
-
-def _to_stock_minimax_h3_references(ref_images):
-    if ref_images is None:
+def _validate_reference_bundle(references, media_label, capacity):
+    if references is None:
         return None
-    if not isinstance(ref_images, (tuple, list)):
+    if not isinstance(references, (tuple, list)):
         raise TypeError(
-            'Anim MiniMax H3 Reference to Video requires ref_images from '
-            'Anim MiniMax H3 Reference Image Loader.'
+            f'Anim MiniMax H3 requires {media_label} from the matching Anim '
+            'References node.'
         )
-    if not ref_images:
-        raise ValueError('Anim MiniMax H3 received no reference images.')
-    if len(ref_images) > MINIMAX_H3_REFERENCE_IMAGE_CAPACITY:
+    if not references:
+        raise ValueError(f'Anim MiniMax H3 received no {media_label}.')
+    if len(references) > capacity:
         raise ValueError(
-            'MiniMax H3 accepts at most '
-            f'{MINIMAX_H3_REFERENCE_IMAGE_CAPACITY} reference images, but '
-            f'{len(ref_images)} were supplied.'
+            f'MiniMax H3 accepts at most {capacity} {media_label}, but '
+            f'{len(references)} were supplied.'
         )
+    return references
 
+
+def _to_stock_minimax_h3_images(ref_images):
+    references = _validate_reference_bundle(
+        ref_images,
+        'image references',
+        MINIMAX_H3_REFERENCE_IMAGE_CAPACITY,
+    )
+    if references is None:
+        return None
     stock_references = {}
-    for index, image in enumerate(ref_images):
+    for index, image in enumerate(references):
         shape = getattr(image, 'shape', None)
         if shape is None or len(shape) != 4 or shape[0] != 1:
             raise ValueError(
@@ -310,6 +268,71 @@ def _to_stock_minimax_h3_references(ref_images):
     return stock_references
 
 
+def _load_minimax_h3_video_references(ref_videos):
+    references = _validate_reference_bundle(
+        ref_videos,
+        'video references',
+        MINIMAX_H3_REFERENCE_VIDEO_CAPACITY,
+    )
+    if references is None:
+        return None, None
+    stock_videos = {}
+    stock_video_audios = {}
+    for index, file_name in enumerate(references):
+        path = folder_paths.get_annotated_filepath(file_name)
+        components = InputImpl.VideoFromFile(path).get_components()
+        frames = components.images
+        if len(frames) == 0:
+            raise ValueError(
+                f'Anim video reference {index + 1} contains no video frames.'
+            )
+        source_fps = float(components.frame_rate)
+        if source_fps <= 0:
+            raise ValueError(
+                f'Anim video reference {index + 1} has an invalid frame rate.'
+            )
+        if source_fps != MINIMAX_H3_REFERENCE_VIDEO_FPS:
+            target_count = max(
+                1,
+                round(
+                    len(frames)
+                    * MINIMAX_H3_REFERENCE_VIDEO_FPS
+                    / source_fps
+                ),
+            )
+            frame_indexes = [
+                min(
+                    len(frames) - 1,
+                    int(position * source_fps / MINIMAX_H3_REFERENCE_VIDEO_FPS),
+                )
+                for position in range(target_count)
+            ]
+            frames = frames[frame_indexes]
+        stock_videos[f'ref_video_{index}'] = frames
+        if components.audio is not None:
+            stock_video_audios[f'ref_video_audio_{index}'] = components.audio
+    return stock_videos, stock_video_audios
+
+
+def _load_minimax_h3_audio_references(ref_audios):
+    references = _validate_reference_bundle(
+        ref_audios,
+        'audio references',
+        MINIMAX_H3_REFERENCE_AUDIO_CAPACITY,
+    )
+    if references is None:
+        return None
+    stock_audios = {}
+    for index, file_name in enumerate(references):
+        path = folder_paths.get_annotated_filepath(file_name)
+        waveform, sample_rate = _load_audio_file(path)
+        stock_audios[f'ref_audio_{index}'] = {
+            'waveform': waveform.unsqueeze(0),
+            'sample_rate': sample_rate,
+        }
+    return stock_audios
+
+
 if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
     class AnimMiniMaxH3ReferenceToVideo(io.ComfyNode):
         RETURN_TYPES = tuple(_StockMiniMaxH3ReferenceToVideo.RETURN_TYPES)
@@ -317,9 +340,8 @@ if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
         FUNCTION = 'EXECUTE_NORMALIZED'
         CATEGORY = _StockMiniMaxH3ReferenceToVideo.CATEGORY
         DESCRIPTION = (
-            'MiniMax H3 reference-to-video using the ordered image bundle '
-            'received by Anim. All stock video and audio reference inputs are '
-            'preserved.'
+            'MiniMax H3 reference-to-video using the shared ordered Anim '
+            'Image, Video, and Audio References nodes.'
         )
 
         @classmethod
@@ -329,22 +351,35 @@ if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
             schema.display_name = 'Anim MiniMax H3 Reference to Video'
             schema.description = cls.DESCRIPTION
             schema.inputs = list(schema.inputs)
+            replacements = {
+                'ref_images': (
+                    ANIM_IMAGE_REFERENCES,
+                    'Anim Image References output. MiniMax H3 accepts up to 9.',
+                ),
+                'ref_videos': (
+                    ANIM_VIDEO_REFERENCES,
+                    'Anim Video References output. MiniMax H3 accepts up to 3.',
+                ),
+                'ref_audios': (
+                    ANIM_AUDIO_REFERENCES,
+                    'Anim Audio References output. MiniMax H3 accepts up to 3.',
+                ),
+            }
+            replaced = set()
             for index, input_spec in enumerate(schema.inputs):
-                if input_spec.id == 'ref_images':
-                    schema.inputs[index] = io.Custom(
-                        ANIM_MINIMAX_H3_REFERENCE_IMAGES,
-                    ).Input(
-                        'ref_images',
-                        optional=True,
-                        tooltip=(
-                            'Ordered images from Anim MiniMax H3 Reference '
-                            'Image Loader. MiniMax H3 accepts up to 9.'
-                        ),
-                    )
-                    break
-            else:
+                replacement = replacements.get(input_spec.id)
+                if replacement is None:
+                    continue
+                reference_type, tooltip = replacement
+                schema.inputs[index] = io.Custom(reference_type).Input(
+                    input_spec.id,
+                    optional=True,
+                    tooltip=tooltip,
+                )
+                replaced.add(input_spec.id)
+            if replaced != set(replacements):
                 raise RuntimeError(
-                    'The stock MiniMax H3 node no longer exposes ref_images.'
+                    'The stock MiniMax H3 reference inputs have changed.'
                 )
             return schema
 
@@ -353,15 +388,10 @@ if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
             input_types = copy.deepcopy(
                 _StockMiniMaxH3ReferenceToVideo.INPUT_TYPES(),
             )
-            input_types.setdefault('optional', {})['ref_images'] = (
-                ANIM_MINIMAX_H3_REFERENCE_IMAGES,
-                {
-                    'tooltip': (
-                        'Ordered images from Anim MiniMax H3 Reference Image '
-                        'Loader. MiniMax H3 accepts up to 9.'
-                    ),
-                },
-            )
+            optional = input_types.setdefault('optional', {})
+            optional['ref_images'] = (ANIM_IMAGE_REFERENCES, {})
+            optional['ref_videos'] = (ANIM_VIDEO_REFERENCES, {})
+            optional['ref_audios'] = (ANIM_AUDIO_REFERENCES, {})
             return input_types
 
         @classmethod
@@ -380,6 +410,11 @@ if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
             ref_video_audios=None,
             ref_audios=None,
         ):
+            stock_videos, derived_video_audios = (
+                _load_minimax_h3_video_references(ref_videos)
+            )
+            stock_video_audios = dict(derived_video_audios or {})
+            stock_video_audios.update(ref_video_audios or {})
             return _StockMiniMaxH3ReferenceToVideo.execute(
                 clip=clip,
                 vae=vae,
@@ -389,10 +424,10 @@ if io is not None and _StockMiniMaxH3ReferenceToVideo is not None:
                 height=height,
                 length=length,
                 ref_image_size=ref_image_size,
-                ref_images=_to_stock_minimax_h3_references(ref_images),
-                ref_videos=ref_videos,
-                ref_video_audios=ref_video_audios,
-                ref_audios=ref_audios,
+                ref_images=_to_stock_minimax_h3_images(ref_images),
+                ref_videos=stock_videos,
+                ref_video_audios=stock_video_audios or None,
+                ref_audios=_load_minimax_h3_audio_references(ref_audios),
             )
 
 
@@ -469,11 +504,11 @@ def _parse_references(references_json, max_references, media_label):
 class AnimVideoReferences:
     @classmethod
     def INPUT_TYPES(cls):
-        return _reference_input_types(default_capacity=1)
+        return _reference_input_types(default_capacity=100)
 
-    RETURN_TYPES = ('STRING',)
-    RETURN_NAMES = ('file_names',)
-    OUTPUT_IS_LIST = (True,)
+    RETURN_TYPES = ('STRING', ANIM_VIDEO_REFERENCES)
+    RETURN_NAMES = ('file_names', 'references')
+    OUTPUT_IS_LIST = (True, False)
     FUNCTION = 'emit'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
@@ -482,23 +517,22 @@ class AnimVideoReferences:
     )
 
     def emit(self, references_json, max_references):
-        return (
-            _parse_references(
-                references_json,
-                max_references,
-                media_label='video',
-            ),
+        references = _parse_references(
+            references_json,
+            max_references,
+            media_label='video',
         )
+        return (references, tuple(references))
 
 
 class AnimAudioReferences:
     @classmethod
     def INPUT_TYPES(cls):
-        return _reference_input_types(default_capacity=1)
+        return _reference_input_types(default_capacity=100)
 
-    RETURN_TYPES = ('STRING',)
-    RETURN_NAMES = ('file_names',)
-    OUTPUT_IS_LIST = (True,)
+    RETURN_TYPES = ('STRING', ANIM_AUDIO_REFERENCES)
+    RETURN_NAMES = ('file_names', 'references')
+    OUTPUT_IS_LIST = (True, False)
     FUNCTION = 'emit'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
@@ -507,28 +541,23 @@ class AnimAudioReferences:
     )
 
     def emit(self, references_json, max_references):
-        return (
-            _parse_references(
-                references_json,
-                max_references,
-                media_label='audio',
-            ),
+        references = _parse_references(
+            references_json,
+            max_references,
+            media_label='audio',
         )
+        return (references, tuple(references))
 
 
 NODE_CLASS_MAPPINGS = {
     'AnimPromptInput': AnimPromptInput,
     'AnimImageReferences': AnimImageReferences,
-    'AnimMiniMaxH3ReferenceImageLoader': AnimMiniMaxH3ReferenceImageLoader,
     'AnimVideoReferences': AnimVideoReferences,
     'AnimAudioReferences': AnimAudioReferences,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimPromptInput': 'Anim Prompt Input',
     'AnimImageReferences': 'Anim Image References',
-    'AnimMiniMaxH3ReferenceImageLoader': (
-        'Anim MiniMax H3 Reference Image Loader'
-    ),
     'AnimVideoReferences': 'Anim Video References',
     'AnimAudioReferences': 'Anim Audio References',
 }

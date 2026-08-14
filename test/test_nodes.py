@@ -103,6 +103,40 @@ class _ImageTensor:
         self.shape = (1, 64, 96, 3)
 
 
+class _Frames:
+    def __init__(self, values):
+        self.values = list(values)
+
+    def __len__(self):
+        return len(self.values)
+
+    def __getitem__(self, index):
+        if isinstance(index, list):
+            return _Frames(self.values[item] for item in index)
+        return self.values[index]
+
+
+class _VideoFile:
+    def __init__(self, path):
+        self.path = path
+
+    def get_components(self):
+        frame_rate = 30 if 'first' in self.path else 24
+        return types.SimpleNamespace(
+            images=_Frames(range(frame_rate)),
+            audio=f'video-audio:{self.path}',
+            frame_rate=frame_rate,
+        )
+
+
+class _Waveform:
+    def __init__(self, value):
+        self.value = value
+
+    def unsqueeze(self, axis):
+        return ('batched-waveform', axis, self.value)
+
+
 def _load_bridge():
     aiohttp_module = types.ModuleType('aiohttp')
     aiohttp_module.web = types.SimpleNamespace(
@@ -116,7 +150,12 @@ def _load_bridge():
         ComfyNode=_ComfyNode,
         Custom=_CustomType,
     )
+    comfy_api_latest_module.InputImpl = types.SimpleNamespace(
+        VideoFromFile=_VideoFile,
+    )
     comfy_extras_module = types.ModuleType('comfy_extras')
+    audio_module = types.ModuleType('comfy_extras.nodes_audio')
+    audio_module.load = lambda path: (_Waveform(path), 48000)
     minimax_module = types.ModuleType('comfy_extras.nodes_minimax_h3')
     minimax_module.MiniMaxH3ReferenceToVideo = (
         _StockMiniMaxH3ReferenceToVideo
@@ -127,13 +166,19 @@ def _load_bridge():
         (),
         {'instance': types.SimpleNamespace(routes=_Routes())},
     )
+    folder_paths_module = types.ModuleType('folder_paths')
+    folder_paths_module.get_annotated_filepath = (
+        lambda file_name: f'/input/{file_name}'
+    )
     sys.modules['aiohttp'] = aiohttp_module
     sys.modules['nodes'] = nodes_module
     sys.modules['server'] = server_module
     sys.modules['comfy_api'] = comfy_api_module
     sys.modules['comfy_api.latest'] = comfy_api_latest_module
     sys.modules['comfy_extras'] = comfy_extras_module
+    sys.modules['comfy_extras.nodes_audio'] = audio_module
     sys.modules['comfy_extras.nodes_minimax_h3'] = minimax_module
+    sys.modules['folder_paths'] = folder_paths_module
     path = pathlib.Path(__file__).parents[1] / '__init__.py'
     spec = importlib.util.spec_from_file_location('anim_bridge_test_module', path)
     module = importlib.util.module_from_spec(spec)
@@ -156,52 +201,27 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertEqual(result[0], ['image:one.png', 'image:two.png'])
         self.assertEqual(result[1], ['mask:one.png', 'mask:two.png'])
         self.assertEqual(result[2], ['one.png', 'two.png'])
+        self.assertEqual(result[3], ('image:one.png', 'image:two.png'))
+        self.assertEqual(
+            bridge.AnimImageReferences.RETURN_TYPES[-1],
+            'ANIM_IMAGE_REFERENCES',
+        )
 
     def test_image_reference_node_declares_hidden_paths_and_configurable_capacity(self):
         inputs = bridge.AnimImageReferences.INPUT_TYPES()['required']
 
         self.assertTrue(inputs['image_paths'][1]['hidden'])
-        self.assertEqual(inputs['max_references'][1]['default'], 9)
+        self.assertEqual(inputs['max_references'][1]['default'], 100)
         self.assertEqual(inputs['max_references'][1]['max'], 100)
 
         with self.assertRaisesRegex(ValueError, 'allows 1'):
             bridge.AnimImageReferences().load('one.png\ntwo.png', 1)
 
-    def test_minimax_h3_loader_accepts_100_network_images_in_order(self):
-        paths = '\n'.join(f'image-{index}.png' for index in range(100))
-
-        self.assertTrue(
-            bridge.AnimMiniMaxH3ReferenceImageLoader.VALIDATE_INPUTS(paths),
-        )
-        bundle, image_list = (
-            bridge.AnimMiniMaxH3ReferenceImageLoader().load_reference_images(
-                paths,
-            )
-        )
-
-        self.assertEqual(len(bundle), 100)
-        self.assertEqual(bundle[0], 'image:image-0.png')
-        self.assertEqual(bundle[-1], 'image:image-99.png')
-        self.assertEqual(list(bundle), image_list)
-        self.assertEqual(
-            bridge.AnimMiniMaxH3ReferenceImageLoader.RETURN_TYPES,
-            ('ANIM_MINIMAX_H3_REFERENCE_IMAGES', 'IMAGE'),
-        )
-
-    def test_minimax_h3_loader_rejects_more_than_100_network_images(self):
-        paths = '\n'.join(f'image-{index}.png' for index in range(101))
-
-        with self.assertRaisesRegex(ValueError, 'allows 100'):
-            bridge.AnimMiniMaxH3ReferenceImageLoader().load_reference_images(
-                paths,
-            )
-
     def test_minimax_h3_wrapper_preserves_stock_connections_and_image_order(self):
         first = _ImageTensor('first')
         second = _ImageTensor('second')
-        ref_videos = {'ref_video_0': object()}
-        ref_video_audios = {'ref_video_audio_0': object()}
-        ref_audios = {'ref_audio_0': object()}
+        ref_videos = ('first.mp4', 'second.mp4')
+        ref_audios = ('voice.wav', 'music.wav')
 
         result = bridge.AnimMiniMaxH3ReferenceToVideo.execute(
             clip='clip',
@@ -214,7 +234,6 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ref_image_size='max',
             ref_images=(first, second),
             ref_videos=ref_videos,
-            ref_video_audios=ref_video_audios,
             ref_audios=ref_audios,
         )
 
@@ -226,9 +245,24 @@ class AnimBridgeNodeTest(unittest.TestCase):
         )
         self.assertIs(forwarded['ref_images']['ref_image_0'], first)
         self.assertIs(forwarded['ref_images']['ref_image_1'], second)
-        self.assertIs(forwarded['ref_videos'], ref_videos)
-        self.assertIs(forwarded['ref_video_audios'], ref_video_audios)
-        self.assertIs(forwarded['ref_audios'], ref_audios)
+        self.assertEqual(
+            list(forwarded['ref_videos']),
+            ['ref_video_0', 'ref_video_1'],
+        )
+        self.assertEqual(len(forwarded['ref_videos']['ref_video_0']), 24)
+        self.assertEqual(len(forwarded['ref_videos']['ref_video_1']), 24)
+        self.assertEqual(
+            list(forwarded['ref_video_audios']),
+            ['ref_video_audio_0', 'ref_video_audio_1'],
+        )
+        self.assertEqual(
+            list(forwarded['ref_audios']),
+            ['ref_audio_0', 'ref_audio_1'],
+        )
+        self.assertEqual(
+            forwarded['ref_audios']['ref_audio_0']['sample_rate'],
+            48000,
+        )
         self.assertEqual(forwarded['prompt'], 'prompt')
         self.assertEqual(forwarded['width'], 1344)
         self.assertEqual(forwarded['height'], 768)
@@ -250,29 +284,75 @@ class AnimBridgeNodeTest(unittest.TestCase):
                 ref_images=images,
             )
 
+    def test_minimax_h3_wrapper_enforces_video_and_audio_limits(self):
+        with self.assertRaisesRegex(ValueError, 'at most 3 video references'):
+            bridge.AnimMiniMaxH3ReferenceToVideo.execute(
+                clip='clip',
+                vae='video-vae',
+                audio_vae='audio-vae',
+                prompt='prompt',
+                width=1344,
+                height=768,
+                length=124,
+                ref_videos=tuple(f'video-{index}.mp4' for index in range(4)),
+            )
+
+        with self.assertRaisesRegex(ValueError, 'at most 3 audio references'):
+            bridge.AnimMiniMaxH3ReferenceToVideo.execute(
+                clip='clip',
+                vae='video-vae',
+                audio_vae='audio-vae',
+                prompt='prompt',
+                width=1344,
+                height=768,
+                length=124,
+                ref_audios=tuple(f'audio-{index}.wav' for index in range(4)),
+            )
+
     def test_minimax_h3_wrapper_replaces_only_the_stock_image_input(self):
         schema = bridge.AnimMiniMaxH3ReferenceToVideo.define_schema()
         inputs = {input_spec.id: input_spec for input_spec in schema.inputs}
 
         self.assertEqual(schema.node_id, 'AnimMiniMaxH3ReferenceToVideo')
-        self.assertEqual(
-            inputs['ref_images'].type_name,
-            'ANIM_MINIMAX_H3_REFERENCE_IMAGES',
-        )
-        self.assertIn('ref_videos', inputs)
+        self.assertEqual(inputs['ref_images'].type_name, 'ANIM_IMAGE_REFERENCES')
+        self.assertEqual(inputs['ref_videos'].type_name, 'ANIM_VIDEO_REFERENCES')
+        self.assertEqual(inputs['ref_audios'].type_name, 'ANIM_AUDIO_REFERENCES')
         self.assertIn('ref_video_audios', inputs)
-        self.assertIn('ref_audios', inputs)
 
     def test_video_and_audio_references_preserve_array_order(self):
         payload = json.dumps(['first.mp4', 'second.mp4'])
         self.assertEqual(
             bridge.AnimVideoReferences().emit(payload, 2),
-            (['first.mp4', 'second.mp4'],),
+            (
+                ['first.mp4', 'second.mp4'],
+                ('first.mp4', 'second.mp4'),
+            ),
         )
         audio_payload = json.dumps(['music.wav', 'voice.wav'])
         self.assertEqual(
             bridge.AnimAudioReferences().emit(audio_payload, 2),
-            (['music.wav', 'voice.wav'],),
+            (
+                ['music.wav', 'voice.wav'],
+                ('music.wav', 'voice.wav'),
+            ),
+        )
+        self.assertEqual(
+            bridge.AnimVideoReferences.RETURN_TYPES[-1],
+            'ANIM_VIDEO_REFERENCES',
+        )
+        self.assertEqual(
+            bridge.AnimAudioReferences.RETURN_TYPES[-1],
+            'ANIM_AUDIO_REFERENCES',
+        )
+
+    def test_minimax_h3_adds_no_model_specific_reference_loader(self):
+        self.assertNotIn(
+            'AnimMiniMaxH3ReferenceImageLoader',
+            bridge.NODE_CLASS_MAPPINGS,
+        )
+        self.assertIn(
+            'AnimMiniMaxH3ReferenceToVideo',
+            bridge.NODE_CLASS_MAPPINGS,
         )
 
     def test_reference_capacity_is_enforced(self):
