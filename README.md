@@ -61,6 +61,28 @@ Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
 configuration stay in the ComfyUI workflow. Anim changes only the explicit
 Anim input node types above or legacy Builder User Inputs.
 
+### MiniMax H3 reference-to-video nodes
+
+For a native MiniMax H3 reference-to-video workflow, replace only the two
+third-party reference nodes with these Bridge nodes:
+
+1. Replace the reference image loader with **Anim MiniMax H3 Reference Image
+   Loader**.
+2. Replace the reference conditioning node with **Anim MiniMax H3 Reference to
+   Video**.
+3. Connect `ref_images` from the first node to `ref_images` on the second.
+4. Reconnect the same stock `CLIP`, video `VAE`, audio `VAE`, prompt, width,
+   height, and length inputs to the second node.
+5. Keep its `positive` and `LATENT` outputs connected to the existing guider
+   and sampler. Keep the stock video and audio reference slots unchanged.
+
+The network image loader accepts and preserves up to 100 ordered image paths.
+The MiniMax H3 adapter enforces the model's limit of 9 reference images and
+never truncates extras. When the two nodes are connected, the Bridge reports
+an effective image capacity of 9 to Anim so generation is blocked before an
+oversized request is uploaded. Other loaders, samplers, decoders, and output
+nodes in the workflow do not need to change.
+
 ### Prompt node contract
 
 `Anim Prompt Input` is the recommended prompt contract. Anim recognizes it by
@@ -141,7 +163,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 2, "status": "ok"}
+{"bridgeVersion": 3, "status": "ok"}
 ```
 
 ## Update

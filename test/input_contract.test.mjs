@@ -27,6 +27,14 @@ const graph = {
     class_type: 'AnimAudioReferences',
     inputs: { references_json: '[]', max_references: 3 },
   },
+  142: {
+    class_type: 'AnimMiniMaxH3ReferenceImageLoader',
+    inputs: { image_paths: 'one.png\ntwo.png' },
+  },
+  143: {
+    class_type: 'AnimMiniMaxH3ReferenceToVideo',
+    inputs: { ref_images: ['142', 0] },
+  },
 }
 
 assert.deepEqual(explicitAnimInputs(graph), [
@@ -62,6 +70,14 @@ assert.deepEqual(explicitAnimInputs(graph), [
     capacity: 3,
     encoding: 'jsonArray',
   },
+  {
+    nodeId: '142',
+    inputName: 'image_paths',
+    kind: 'image',
+    label: 'Anim MiniMax H3 Reference Image Loader · image files',
+    capacity: 9,
+    encoding: 'newlineSeparated',
+  },
 ])
 
 assert.equal(
@@ -78,6 +94,16 @@ assert.equal(
     graph,
   ).filter((input) => input.nodeId === '1').length,
   1,
+)
+
+assert.equal(
+  explicitAnimInputs({
+    142: {
+      class_type: 'AnimMiniMaxH3ReferenceImageLoader',
+      inputs: { image_paths: '' },
+    },
+  })[0].capacity,
+  100,
 )
 
 assert.equal(
