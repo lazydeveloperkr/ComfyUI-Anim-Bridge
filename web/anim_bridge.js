@@ -78,8 +78,7 @@ function setupImageReferenceBoard(node) {
   toolbar.append(uploadButton, clearButton, count)
   container.append(toolbar, hint, grid, picker)
 
-  const fixedCapacity = node.comfyClass === 'AnimMiniMaxH3ReferenceImageLoader' ? 100 : null
-  const getCapacity = () => fixedCapacity || Math.max(1, Number(capacityWidget?.value || 1))
+  const getCapacity = () => Math.max(1, Number(capacityWidget?.value || 1))
   const getPaths = () => splitImagePaths(pathsWidget.value)
   const setPaths = (paths) => {
     pathsWidget.value = paths.join('\n')
@@ -258,10 +257,7 @@ async function runCommands() {
 app.registerExtension({
   name: 'Anim.WorkflowBridge',
   nodeCreated(node) {
-    if (
-      node.comfyClass === 'AnimImageReferences' ||
-      node.comfyClass === 'AnimMiniMaxH3ReferenceImageLoader'
-    ) setupImageReferenceBoard(node)
+    if (node.comfyClass === 'AnimImageReferences') setupImageReferenceBoard(node)
   },
   async setup() {
     await publish()

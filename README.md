@@ -63,25 +63,23 @@ Anim input node types above or legacy Builder User Inputs.
 
 ### MiniMax H3 reference-to-video nodes
 
-For a native MiniMax H3 reference-to-video workflow, replace only the two
-third-party reference nodes with these Bridge nodes:
+For a native MiniMax H3 reference-to-video workflow, keep using the shared
+**Anim Image References**, **Anim Video References**, and **Anim Audio
+References** input nodes. Add one **Anim MiniMax H3 Reference to Video** node
+and connect each shared node's `references` output to the matching
+`ref_images`, `ref_videos`, or `ref_audios` input.
 
-1. Replace the reference image loader with **Anim MiniMax H3 Reference Image
-   Loader**.
-2. Replace the reference conditioning node with **Anim MiniMax H3 Reference to
-   Video**.
-3. Connect `ref_images` from the first node to `ref_images` on the second.
-4. Reconnect the same stock `CLIP`, video `VAE`, audio `VAE`, prompt, width,
-   height, and length inputs to the second node.
-5. Keep its `positive` and `LATENT` outputs connected to the existing guider
-   and sampler. Keep the stock video and audio reference slots unchanged.
+Reconnect the same stock `CLIP`, video `VAE`, audio `VAE`, prompt, width,
+height, and length inputs. Keep the H3 node's `positive` and `LATENT` outputs
+connected to the existing guider and sampler. The H3 node loads video frames,
+uses each video's embedded soundtrack when present, and loads standalone audio
+references. Other loaders, samplers, decoders, and output nodes do not change.
 
-The network image loader accepts and preserves up to 100 ordered image paths.
-The MiniMax H3 adapter enforces the model's limit of 9 reference images and
-never truncates extras. When the two nodes are connected, the Bridge reports
-an effective image capacity of 9 to Anim so generation is blocked before an
-oversized request is uploaded. Other loaders, samplers, decoders, and output
-nodes in the workflow do not need to change.
+The shared network Reference nodes accept and preserve up to 100 ordered file
+paths. The MiniMax H3 adapter enforces the model limits of 9 images, 3 videos,
+and 3 standalone audio references and never truncates extras. When connected,
+the Bridge reports those effective capacities to Anim so oversized requests
+are blocked before upload.
 
 ### Prompt node contract
 
