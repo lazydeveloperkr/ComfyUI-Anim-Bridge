@@ -17,6 +17,10 @@ const graph = {
     class_type: 'AnimPromptInput',
     inputs: { prompt: '' },
   },
+  5: {
+    class_type: 'AnimDurationInput',
+    inputs: { duration: 5.0 },
+  },
   2: {
     class_type: 'AnimImageReferences',
     inputs: { image_paths: 'one.png\ntwo.png', max_references: 100 },
@@ -71,6 +75,14 @@ assert.deepEqual(explicitAnimInputs(graph), [
     label: 'Anim Audio References · audio files',
     capacity: 3,
     encoding: 'jsonArray',
+  },
+  {
+    nodeId: '5',
+    inputName: 'duration',
+    kind: 'number',
+    label: 'Anim Duration Input · duration',
+    capacity: 1,
+    encoding: 'scalar',
   },
 ])
 
@@ -141,6 +153,22 @@ assert.throws(
   () => applyInputValues((nodeId) => nodes[nodeId], { '3.prompt': 'missing' }),
   /node 3 is not open/,
 )
+
+const durationCallbackValues = []
+const durationNodes = {
+  5: {
+    widgets: [{
+      name: 'duration',
+      type: 'number',
+      value: 0,
+      callback: (value) => durationCallbackValues.push(value),
+    }],
+    setDirtyCanvas: () => {},
+  },
+}
+applyInputValues((nodeId) => durationNodes[nodeId], { '5.duration': '5.5' })
+assert.equal(durationNodes[5].widgets[0].value, 5.5)
+assert.deepEqual(durationCallbackValues, [5.5])
 
 assert.equal(
   explicitAnimInputs({

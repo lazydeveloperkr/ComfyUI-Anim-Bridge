@@ -254,6 +254,16 @@ class AnimBridgeNodeTest(unittest.TestCase):
     def test_prompt_input_returns_the_string(self):
         self.assertEqual(bridge.AnimPromptInput().emit('prompt'), ('prompt',))
 
+    def test_duration_input_returns_a_float(self):
+        self.assertEqual(bridge.AnimDurationInput().emit(5.0), (5.0,))
+        self.assertEqual(bridge.AnimDurationInput().emit('5.5'), (5.5,))
+
+    def test_duration_input_declares_a_float_widget(self):
+        inputs = bridge.AnimDurationInput.INPUT_TYPES()['required']
+
+        self.assertEqual(inputs['duration'][0], 'FLOAT')
+        self.assertEqual(inputs['duration'][1]['default'], 5.0)
+
     def test_image_references_preserve_array_order(self):
         result = bridge.AnimImageReferences().load(
             'one.png\ntwo.png',
@@ -414,6 +424,16 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertIn(
             'AnimMiniMaxH3ReferenceToVideo',
             bridge.NODE_CLASS_MAPPINGS,
+        )
+
+    def test_duration_input_is_registered(self):
+        self.assertIs(
+            bridge.NODE_CLASS_MAPPINGS['AnimDurationInput'],
+            bridge.AnimDurationInput,
+        )
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimDurationInput'],
+            'Anim Duration Input',
         )
 
     def test_reference_capacity_is_enforced(self):

@@ -43,6 +43,15 @@ export function explicitAnimInputs(apiGraph) {
         capacity: 1,
         encoding: 'scalar',
       })
+    } else if (classType === 'AnimDurationInput') {
+      inputs.push({
+        nodeId,
+        inputName: 'duration',
+        kind: 'number',
+        label: 'Anim Duration Input · duration',
+        capacity: 1,
+        encoding: 'scalar',
+      })
     } else if (
       classType === 'AnimImageReferences' ||
       classType === 'AnimVideoReferences' ||
@@ -141,8 +150,11 @@ export function applyInputValues(getNodeById, inputValues) {
     if (!node) throw new Error(`ComfyUI node ${nodeId} is not open.`)
     const widget = node.widgets?.find((item) => item.name === inputName)
     if (!widget) throw new Error(`ComfyUI widget ${inputId} is not available.`)
-    widget.value = value
-    widget.callback?.(value)
+    const appliedValue = widget.type === 'number' && typeof value === 'string'
+      ? Number(value)
+      : value
+    widget.value = appliedValue
+    widget.callback?.(appliedValue)
     node.setDirtyCanvas?.(true, true)
     applied.push(inputId)
   }
