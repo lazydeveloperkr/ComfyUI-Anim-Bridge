@@ -248,7 +248,7 @@ class AnimDurationInput:
                         'default': 5.0,
                         'min': 0.0,
                         'max': 3600.0,
-                        'step': 0.1,
+                        'step': 1.0,
                     },
                 ),
             },
