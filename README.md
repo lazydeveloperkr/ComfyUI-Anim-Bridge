@@ -48,16 +48,20 @@ ComfyUI, and reload every open ComfyUI browser tab.
    output to the positive prompt input used by the workflow. For the built-in
    `CLIP Text Encode` node, convert its `text` widget to an input and connect
    `Anim Prompt Input` there.
-4. If the Storyboard may send image Assets, add **Anim Image References**.
+4. If the workflow needs the Sequence's clip duration, add **Anim Duration
+   Input** from `Anim / Inputs`. Connect its `duration` FLOAT output to the
+   workflow component that consumes it, such as a length or frame-count
+   calculation.
+5. If the Storyboard may send image Assets, add **Anim Image References**.
    Set `max_references` to the maximum number accepted by this workflow. Its
    `images` output is a ComfyUI IMAGE list in the same order as the Asset
    references shown in Anim. Connect it to the workflow component that accepts
    the reference image list.
-5. For video or audio Assets, add **Anim Video References** or **Anim Audio
+6. For video or audio Assets, add **Anim Video References** or **Anim Audio
    References**, set each `max_references`, and connect the ordered
    `file_names` output to the matching loader contract in your workflow.
-6. Keep a save or output node that produces the file Anim should collect.
-7. Run the workflow once, keep its browser tab open, then refresh and select it
+7. Keep a save or output node that produces the file Anim should collect.
+8. Run the workflow once, keep its browser tab open, then refresh and select it
    in Anim.
 
 Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
@@ -103,6 +107,15 @@ node. Do not connect it to the `clip` model socket on `CLIP Text Encode`.
 For backward compatibility, a normal text widget exposed as a Builder User
 Input is still supported. The exact widget must be the prompt string field,
 such as `CLIPTextEncode.text`, not a model, conditioning, or CLIP socket.
+
+### Duration node contract
+
+`Anim Duration Input` receives the Sequence's clip duration, in seconds, as a
+FLOAT widget. Anim recognizes it by its fixed node type. Connect its
+`duration` output to whichever downstream node in the workflow turns duration
+into a model parameter, such as a frame-count or length calculation. The node
+does not enforce a duration range beyond the widget's own `min`/`max`; the
+workflow decides what values are valid for the selected model.
 
 ### Image reference array contract
 

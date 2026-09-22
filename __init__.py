@@ -237,6 +237,35 @@ class AnimPromptInput:
         return (prompt,)
 
 
+class AnimDurationInput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'duration': (
+                    'FLOAT',
+                    {
+                        'default': 5.0,
+                        'min': 0.0,
+                        'max': 3600.0,
+                        'step': 0.1,
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ('FLOAT',)
+    RETURN_NAMES = ('duration',)
+    FUNCTION = 'emit'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives the clip duration, in seconds, selected in Anim.'
+    )
+
+    def emit(self, duration):
+        return (float(duration),)
+
+
 class AnimImageReferences:
     @classmethod
     def INPUT_TYPES(cls):
@@ -609,12 +638,14 @@ class AnimAudioReferences:
 
 NODE_CLASS_MAPPINGS = {
     'AnimPromptInput': AnimPromptInput,
+    'AnimDurationInput': AnimDurationInput,
     'AnimImageReferences': AnimImageReferences,
     'AnimVideoReferences': AnimVideoReferences,
     'AnimAudioReferences': AnimAudioReferences,
 }
 NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimPromptInput': 'Anim Prompt Input',
+    'AnimDurationInput': 'Anim Duration Input',
     'AnimImageReferences': 'Anim Image References',
     'AnimVideoReferences': 'Anim Video References',
     'AnimAudioReferences': 'Anim Audio References',
