@@ -263,6 +263,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
 
         self.assertEqual(inputs['duration'][0], 'FLOAT')
         self.assertEqual(inputs['duration'][1]['default'], 5.0)
+        self.assertEqual(inputs['duration'][1]['step'], 1.0)
 
     def test_image_references_preserve_array_order(self):
         result = bridge.AnimImageReferences().load(
