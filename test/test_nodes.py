@@ -171,6 +171,9 @@ def _load_bridge():
     folder_paths_module.get_annotated_filepath = (
         lambda file_name: f'/input/{file_name}'
     )
+    folder_paths_module.exists_annotated_filepath = (
+        lambda file_name: not file_name.startswith('missing')
+    )
     sys.modules['aiohttp'] = aiohttp_module
     sys.modules['nodes'] = nodes_module
     sys.modules['server'] = server_module
@@ -469,6 +472,79 @@ class AnimBridgeNodeTest(unittest.TestCase):
                 json.dumps(['first.mp4', 'second.mp4']),
                 1,
             )
+
+    def test_image_input_loads_the_file_for_its_role(self):
+        self.assertEqual(
+            bridge.AnimImageInput().load('outfit', ' outfit.webp '),
+            ('image:outfit.webp', 'mask:outfit.webp'),
+        )
+
+    def test_image_input_offers_only_the_fixed_roles(self):
+        image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
+        self.assertEqual(image_id[0], ['character', 'outfit', 'location'])
+        self.assertEqual(image_id[1]['default'], 'character')
+
+    def test_image_input_rejects_an_unknown_role(self):
+        with self.assertRaisesRegex(ValueError, 'unknown image_id "face"'):
+            bridge.AnimImageInput().load('face', 'face.png')
+
+    def test_image_input_rejects_an_empty_image(self):
+        with self.assertRaisesRegex(ValueError, 'no location image'):
+            bridge.AnimImageInput().load('location', '  ')
+
+    def test_image_input_rejects_a_missing_file(self):
+        with self.assertRaisesRegex(ValueError, 'not in the ComfyUI input'):
+            bridge.AnimImageInput().load('character', 'missing.png')
+
+    def test_image_input_reruns_when_the_file_changes(self):
+        self.assertEqual(
+            bridge.AnimImageInput.IS_CHANGED('character', 'char.png'),
+            'changed:char.png',
+        )
+        self.assertEqual(bridge.AnimImageInput.IS_CHANGED('character', ''), '')
+
+    def test_resolution_input_returns_width_and_height(self):
+        self.assertEqual(
+            bridge.AnimResolutionInput().emit(1152, 2048),
+            (1152, 2048),
+        )
+
+    def test_resolution_input_declares_32_pixel_steps_and_2k_default(self):
+        required = bridge.AnimResolutionInput.INPUT_TYPES()['required']
+        self.assertEqual(required['width'][1]['default'], 2048)
+        self.assertEqual(required['height'][1]['default'], 1152)
+        self.assertEqual(required['width'][1]['step'], 32)
+        self.assertEqual(required['height'][1]['step'], 32)
+
+    def test_resolution_input_rejects_sizes_off_the_32_pixel_grid(self):
+        with self.assertRaisesRegex(ValueError, 'height 1080 is not a multiple'):
+            bridge.AnimResolutionInput().emit(1920, 1080)
+
+    def test_resolution_input_rejects_sizes_out_of_range(self):
+        with self.assertRaisesRegex(ValueError, 'width 8192 is outside'):
+            bridge.AnimResolutionInput().emit(8192, 1152)
+
+    def test_image_and_resolution_inputs_are_registered(self):
+        self.assertIs(
+            bridge.NODE_CLASS_MAPPINGS['AnimImageInput'],
+            bridge.AnimImageInput,
+        )
+        self.assertIs(
+            bridge.NODE_CLASS_MAPPINGS['AnimResolutionInput'],
+            bridge.AnimResolutionInput,
+        )
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimImageInput'],
+            'Anim Image Input',
+        )
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimResolutionInput'],
+            'Anim Resolution Input',
+        )
+
+    def test_health_reports_bridge_version_5(self):
+        payload, _status = asyncio.run(bridge.anim_bridge_health(None))
+        self.assertEqual(payload['bridgeVersion'], 5)
 
 
 if __name__ == '__main__':

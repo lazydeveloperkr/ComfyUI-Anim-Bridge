@@ -157,6 +157,54 @@ needs the whole list in a single call must implement `INPUT_IS_LIST = True`.
 This is different from an IMAGE batch: references can have different sizes and
 remain separate list entries.
 
+### Role image input contract
+
+`Anim Image Input` receives exactly one Asset image for a fixed role. Its
+`image_id` widget is a dropdown with three values only: `character`, `outfit`,
+and `location`. Anim assigns one Asset to each role per Sequence and writes the
+uploaded ComfyUI input file name into the node's `image` STRING widget. The
+node shows a preview and an upload button, loads the file like `Load Image`,
+and returns `image` (IMAGE) and `mask` (MASK).
+
+- Use each role at most once per workflow. When two nodes share an `image_id`,
+  the Bridge flags both with `duplicateSlotId: true` and Anim blocks
+  generation instead of guessing which one to fill.
+- An empty `image` or a file that is not in the ComfyUI input folder stops
+  the run with a clear error. The Bridge never substitutes a placeholder.
+- When the `image` output is wired to `TextEncodeQwenImage21`
+  `images.image_N`, the Bridge publishes `promptToken: "<imageN>"`. Anim users
+  write `{character}`, `{outfit}`, and `{location}` in the prompt, and Anim
+  replaces each with the token of the matching node, so a prompt does not
+  depend on which encoder slot a role is wired to. A role that does not reach
+  the encoder has `promptToken: null`.
+
+### Resolution input contract
+
+`Anim Resolution Input` receives the output image size selected in Anim
+through its `width` and `height` INT widgets and returns both as INT. Connect
+them to the latent size of the workflow, such as `Empty Latent Image`. The
+default is 2048×1152 (16:9, 2K). Each side must be between 256 and 4096 and a
+multiple of 32, as Qwen-Image-2.1 requires; any other value stops the run
+instead of being resized silently.
+
+### Qwen-Image-2.1 first-frame workflow
+
+`workflows/qwen21_firstframe_anim.json` is the Anim-driven version of
+`workflows/qwen21_firstframe_3ref.json`:
+
+| Anim node | Connected to |
+| --- | --- |
+| `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
+| `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
+| `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
+| `Anim Prompt Input` | `TextEncodeQwenImage21` `prompt` |
+| `Anim Resolution Input` | `Empty Latent Image` `width`, `height` |
+| `Anim Sequence Output` | `Save Image` `filename_prefix` |
+
+It requires ComfyUI v0.37.0 or later and the `Comfy-Org/Qwen-Image-2.1`
+models `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, and
+`qwen_image_2.1_vae_bf16`.
+
 ### Video and audio reference array contracts
 
 `Anim Video References` and `Anim Audio References` use the same ordered JSON
@@ -207,7 +255,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 4, "status": "ok"}
+{"bridgeVersion": 5, "status": "ok"}
 ```
 
 ## Update

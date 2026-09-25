@@ -202,3 +202,116 @@ assert.equal(
   })[0].capacity,
   1,
 )
+
+const qwenGraph = {
+  12: { class_type: 'AnimImageInput', inputs: { image_id: 'character', image: 'char.webp' } },
+  13: { class_type: 'AnimImageInput', inputs: { image_id: 'outfit', image: 'outfit.webp' } },
+  14: { class_type: 'AnimImageInput', inputs: { image_id: 'location', image: 'place.webp' } },
+  21: { class_type: 'AnimResolutionInput', inputs: { width: 2048, height: 1152 } },
+  30: {
+    class_type: 'TextEncodeQwenImage21',
+    inputs: {
+      prompt: ['20', 0],
+      'images.image_1': ['12', 0],
+      'images.image_2': ['13', 0],
+      'images.image_3': ['14', 0],
+    },
+  },
+}
+assert.deepEqual(explicitAnimInputs(qwenGraph), [
+  {
+    nodeId: '12',
+    inputName: 'image',
+    kind: 'image',
+    label: 'Anim Image Input · character',
+    capacity: 1,
+    encoding: 'scalar',
+    slotId: 'character',
+    promptToken: '<image1>',
+    duplicateSlotId: false,
+  },
+  {
+    nodeId: '13',
+    inputName: 'image',
+    kind: 'image',
+    label: 'Anim Image Input · outfit',
+    capacity: 1,
+    encoding: 'scalar',
+    slotId: 'outfit',
+    promptToken: '<image2>',
+    duplicateSlotId: false,
+  },
+  {
+    nodeId: '14',
+    inputName: 'image',
+    kind: 'image',
+    label: 'Anim Image Input · location',
+    capacity: 1,
+    encoding: 'scalar',
+    slotId: 'location',
+    promptToken: '<image3>',
+    duplicateSlotId: false,
+  },
+  {
+    nodeId: '21',
+    inputName: 'width',
+    kind: 'width',
+    label: 'Anim Resolution Input · width',
+    capacity: 1,
+    encoding: 'scalar',
+  },
+  {
+    nodeId: '21',
+    inputName: 'height',
+    kind: 'height',
+    label: 'Anim Resolution Input · height',
+    capacity: 1,
+    encoding: 'scalar',
+  },
+])
+
+// An image that does not reach the Qwen encoder has no prompt token.
+const unwiredGraph = structuredClone(qwenGraph)
+delete unwiredGraph[30].inputs['images.image_3']
+assert.equal(explicitAnimInputs(unwiredGraph)[2].promptToken, null)
+
+const duplicateGraph = structuredClone(qwenGraph)
+duplicateGraph[13].inputs.image_id = 'character'
+assert.deepEqual(
+  explicitAnimInputs(duplicateGraph)
+    .filter((input) => input.kind === 'image')
+    .map((input) => [input.slotId, input.duplicateSlotId]),
+  [['character', true], ['character', true], ['location', false]],
+)
+
+// Anim sees the role and token in the revision, but not runtime file names
+// or sizes, so one Sequence's values do not look like a structural change.
+const qwenRevision = revisionPayload(qwenGraph, explicitAnimInputs(qwenGraph), ['40'])
+assert.deepEqual(qwenRevision.inputs[0], {
+  nodeId: '12',
+  inputName: 'image',
+  kind: 'image',
+  capacity: 1,
+  encoding: 'scalar',
+  slotId: 'character',
+  promptToken: '<image1>',
+  duplicateSlotId: false,
+})
+assert.deepEqual(qwenRevision.inputs[3], {
+  nodeId: '21',
+  inputName: 'width',
+  kind: 'width',
+  capacity: 1,
+  encoding: 'scalar',
+})
+assert.equal(qwenRevision.apiGraph[12].inputs.image, '__ANIM_RUNTIME_INPUT__')
+assert.equal(qwenRevision.apiGraph[12].inputs.image_id, 'character')
+assert.equal(qwenRevision.apiGraph[21].inputs.width, '__ANIM_RUNTIME_INPUT__')
+const resizedGraph = structuredClone(qwenGraph)
+resizedGraph[12].inputs.image = 'other.webp'
+resizedGraph[21].inputs.width = 1152
+resizedGraph[21].inputs.height = 2048
+assert.deepEqual(
+  revisionPayload(resizedGraph, explicitAnimInputs(resizedGraph), ['40']),
+  qwenRevision,
+)

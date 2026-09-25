@@ -5,11 +5,11 @@ import uuid
 
 from aiohttp import web
 
+import folder_paths
 import nodes
 from server import PromptServer
 
 try:
-    import folder_paths
     from comfy_api.latest import InputImpl, io
     from comfy_extras.nodes_audio import load as _load_audio_file
     from comfy_extras.nodes_minimax_h3 import (
@@ -19,7 +19,6 @@ except ImportError:
     # Keep the general Anim Bridge available on ComfyUI versions that do not
     # include MiniMax H3 yet. The two H3 nodes are registered only when the
     # corresponding stock node is present.
-    folder_paths = None
     InputImpl = None
     io = None
     _load_audio_file = None
@@ -39,6 +38,13 @@ MINIMAX_H3_REFERENCE_IMAGE_CAPACITY = 9
 MINIMAX_H3_REFERENCE_VIDEO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
+# Fixed roles an Anim Image Input can take. Anim assigns one Asset to each role
+# per Sequence, so the set is a closed contract rather than free text.
+ANIM_IMAGE_INPUT_IDS = ('character', 'outfit', 'location')
+# Qwen-Image-2.1 expects latent sizes in multiples of 32.
+ANIM_RESOLUTION_STEP = 32
+ANIM_RESOLUTION_MIN = 256
+ANIM_RESOLUTION_MAX = 4096
 
 
 def _json(payload, status=200):
@@ -49,7 +55,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 4, 'status': 'ok'})
+    return _json({'bridgeVersion': 5, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -346,6 +352,109 @@ class AnimImageReferences:
             images.append(image)
             masks.append(mask)
         return (images, masks, references, tuple(images))
+
+
+class AnimImageInput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'image_id': (
+                    list(ANIM_IMAGE_INPUT_IDS),
+                    {'default': ANIM_IMAGE_INPUT_IDS[0]},
+                ),
+                'image': (
+                    'STRING',
+                    {
+                        'default': '',
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ('IMAGE', 'MASK')
+    RETURN_NAMES = ('image', 'mask')
+    FUNCTION = 'load'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives one Asset image from Anim for a fixed role: character, '
+        'outfit, or location. Anim matches the Asset to this node by its '
+        'image_id and loads the file from the ComfyUI input folder.'
+    )
+
+    @classmethod
+    def IS_CHANGED(cls, image_id, image):
+        # Re-run when the same file name is overwritten with new content.
+        file_name = str(image or '').strip()
+        if not file_name:
+            return ''
+        return nodes.LoadImage.IS_CHANGED(file_name)
+
+    def load(self, image_id, image):
+        if image_id not in ANIM_IMAGE_INPUT_IDS:
+            raise ValueError(
+                f'Anim Image Input has an unknown image_id "{image_id}". '
+                f'Use one of: {", ".join(ANIM_IMAGE_INPUT_IDS)}.'
+            )
+        file_name = str(image or '').strip()
+        if not file_name:
+            raise ValueError(
+                f'Anim sent no {image_id} image to this node.'
+            )
+        if not folder_paths.exists_annotated_filepath(file_name):
+            raise ValueError(
+                f'The {image_id} image "{file_name}" is not in the ComfyUI '
+                'input folder.'
+            )
+        return nodes.LoadImage().load_image(file_name)
+
+
+class AnimResolutionInput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        size = {
+            'min': ANIM_RESOLUTION_MIN,
+            'max': ANIM_RESOLUTION_MAX,
+            'step': ANIM_RESOLUTION_STEP,
+        }
+        return {
+            'required': {
+                'width': ('INT', {'default': 2048, **size}),
+                'height': ('INT', {'default': 1152, **size}),
+            },
+        }
+
+    RETURN_TYPES = ('INT', 'INT')
+    RETURN_NAMES = ('width', 'height')
+    FUNCTION = 'emit'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives the output image width and height selected in Anim. '
+        'Connect both outputs to the latent size of the workflow, such as '
+        'Empty Latent Image.'
+    )
+
+    def emit(self, width, height):
+        return (
+            _resolution_side('width', width),
+            _resolution_side('height', height),
+        )
+
+
+def _resolution_side(name, value):
+    side = int(value)
+    if not ANIM_RESOLUTION_MIN <= side <= ANIM_RESOLUTION_MAX:
+        raise ValueError(
+            f'Anim Resolution Input {name} {side} is outside '
+            f'{ANIM_RESOLUTION_MIN}-{ANIM_RESOLUTION_MAX}.'
+        )
+    if side % ANIM_RESOLUTION_STEP:
+        # Never resize silently: the image would not match what Anim asked for.
+        raise ValueError(
+            f'Anim Resolution Input {name} {side} is not a multiple of '
+            f'{ANIM_RESOLUTION_STEP}.'
+        )
+    return side
 
 
 def _validate_reference_bundle(references, media_label, capacity):
@@ -671,6 +780,8 @@ NODE_CLASS_MAPPINGS = {
     'AnimPromptInput': AnimPromptInput,
     'AnimDurationInput': AnimDurationInput,
     'AnimSequenceOutput': AnimSequenceOutput,
+    'AnimImageInput': AnimImageInput,
+    'AnimResolutionInput': AnimResolutionInput,
     'AnimImageReferences': AnimImageReferences,
     'AnimVideoReferences': AnimVideoReferences,
     'AnimAudioReferences': AnimAudioReferences,
@@ -679,6 +790,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimPromptInput': 'Anim Prompt Input',
     'AnimDurationInput': 'Anim Duration Input',
     'AnimSequenceOutput': 'Anim Sequence Output',
+    'AnimImageInput': 'Anim Image Input',
+    'AnimResolutionInput': 'Anim Resolution Input',
     'AnimImageReferences': 'Anim Image References',
     'AnimVideoReferences': 'Anim Video References',
     'AnimAudioReferences': 'Anim Audio References',

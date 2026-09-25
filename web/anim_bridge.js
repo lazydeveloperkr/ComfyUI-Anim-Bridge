@@ -183,6 +183,78 @@ function setupImageReferenceBoard(node) {
   render()
 }
 
+function setupImageInput(node) {
+  const imageWidget = node.widgets?.find((widget) => widget.name === 'image')
+  if (!imageWidget || node.__animImageInput) return
+  node.__animImageInput = true
+
+  const container = document.createElement('div')
+  Object.assign(container.style, {
+    boxSizing: 'border-box',
+    padding: '8px',
+    borderRadius: '10px',
+    background: 'rgba(10, 14, 18, 0.88)',
+    color: '#d9f7df',
+    fontFamily: 'system-ui, sans-serif',
+  })
+  const uploadButton = document.createElement('button')
+  uploadButton.textContent = 'Upload image'
+  const preview = document.createElement('img')
+  Object.assign(preview.style, {
+    display: 'block',
+    width: '100%',
+    height: '180px',
+    marginTop: '8px',
+    objectFit: 'contain',
+    background: '#151b18',
+    borderRadius: '8px',
+  })
+  const empty = document.createElement('div')
+  empty.textContent = 'No image yet. Anim fills this at execution time.'
+  Object.assign(empty.style, { marginTop: '8px', fontSize: '12px', opacity: '0.8' })
+  const picker = document.createElement('input')
+  picker.type = 'file'
+  picker.accept = 'image/*'
+  picker.style.display = 'none'
+  container.append(uploadButton, preview, empty, picker)
+
+  const render = () => {
+    const fileName = String(imageWidget.value || '').trim()
+    preview.style.display = fileName ? 'block' : 'none'
+    empty.style.display = fileName ? 'none' : 'block'
+    if (fileName) {
+      preview.src = inputPreviewUrl(fileName)
+      preview.alt = fileName
+    } else {
+      preview.removeAttribute('src')
+    }
+  }
+  const previousImageCallback = imageWidget.callback
+  imageWidget.callback = (...args) => {
+    previousImageCallback?.(...args)
+    render()
+  }
+  uploadButton.onclick = () => picker.click()
+  picker.onchange = async () => {
+    const [file] = Array.from(picker.files || [])
+    picker.value = ''
+    if (!file) return
+    try {
+      imageWidget.value = await uploadInputImage(file)
+      imageWidget.callback?.(imageWidget.value)
+      node.setDirtyCanvas?.(true, true)
+    } catch (error) {
+      globalThis.alert?.(String(error))
+    }
+  }
+  node.addDOMWidget('anim_image_input_preview', 'div', container, {
+    serialize: false,
+    hideOnZoom: false,
+  })
+  node.setSize?.([Math.max(node.size?.[0] || 0, 300), Math.max(node.size?.[1] || 0, 300)])
+  render()
+}
+
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`
   if (value && typeof value === 'object') {
@@ -290,6 +362,7 @@ app.registerExtension({
   name: 'Anim.WorkflowBridge',
   nodeCreated(node) {
     if (node.comfyClass === 'AnimImageReferences') setupImageReferenceBoard(node)
+    if (node.comfyClass === 'AnimImageInput') setupImageInput(node)
   },
   async setup() {
     await publish()
