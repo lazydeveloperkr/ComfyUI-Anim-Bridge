@@ -357,7 +357,9 @@ def _validate_reference_bundle(references, media_label, capacity):
             'References node.'
         )
     if not references:
-        raise ValueError(f'Anim MiniMax H3 received no {media_label}.')
+        # Anim Audio References sends an empty bundle for a Sequence without
+        # voice or sound references; the stock node treats None as "none".
+        return None
     if len(references) > capacity:
         raise ValueError(
             f'MiniMax H3 accepts at most {capacity} {media_label}, but '
@@ -592,7 +594,12 @@ def _reference_input_types(default_capacity):
     }
 
 
-def _parse_references(references_json, max_references, media_label):
+def _parse_references(
+    references_json,
+    max_references,
+    media_label,
+    allow_empty=False,
+):
     try:
         references = json.loads(references_json)
     except (TypeError, json.JSONDecodeError) as error:
@@ -612,7 +619,7 @@ def _parse_references(references_json, max_references, media_label):
             f'Anim sent {len(references)} {media_label} references, but this '
             f'node allows {max_references}.'
         )
-    if not references:
+    if not references and not allow_empty:
         raise ValueError(
             f'Anim sent no {media_label} references to this node.'
         )
@@ -655,14 +662,18 @@ class AnimAudioReferences:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives Asset audio file names from Anim in array order. Connect the '
-        'output to the audio loader contract used by this workflow.'
+        'output to the audio loader contract used by this workflow. A Sequence '
+        'without voice or sound references sends an empty array, which yields '
+        'no references instead of an error.'
     )
 
     def emit(self, references_json, max_references):
+        # Many Sequences have no dialogue or voice timbre, so audio is optional.
         references = _parse_references(
             references_json,
             max_references,
             media_label='audio',
+            allow_empty=True,
         )
         return (references, tuple(references))
 
