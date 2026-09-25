@@ -28,6 +28,9 @@ except ImportError:
 
 _sessions = {}
 _commands = {}
+# Results reported by the browser tab for commands that return a value, such
+# as the prompt id of a queue command.
+_command_results = {}
 _stale_after_seconds = 15
 _purge_after_seconds = 300
 
@@ -63,7 +66,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 5, 'status': 'ok'})
+    return _json({'bridgeVersion': 6, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -91,6 +94,19 @@ async def anim_bridge_publish(request):
     completed = str(body.get('completedCommandId') or '').strip()
     if completed:
         _commands.pop(completed, None)
+    result = body.get('commandResult')
+    if isinstance(result, dict) and str(result.get('commandId') or '').strip():
+        _command_results[str(result['commandId'])] = {
+            'promptId': str(result.get('promptId') or ''),
+            'error': str(result.get('error') or ''),
+            'at': now,
+        }
+    for command_id in [
+        key
+        for key, value in _command_results.items()
+        if now - value['at'] > _purge_after_seconds
+    ]:
+        _command_results.pop(command_id, None)
     return _json({'accepted': True})
 
 
@@ -166,6 +182,41 @@ async def anim_bridge_apply(request):
         inputs=inputs,
     )
     return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/queue')
+async def anim_bridge_queue(request):
+    """Runs the open workflow tab the way its own Run button does."""
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    workflow_id = str(body.get('workflowId') or '').strip()
+    if not session_id or not tab_id or not workflow_id:
+        return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='queuePrompt',
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.get('/anim_bridge/v1/command_result')
+async def anim_bridge_command_result(request):
+    command_id = request.query.get('command_id', '')
+    result = _command_results.get(command_id)
+    if result is None:
+        return _json({'status': 'pending'})
+    return _json(
+        {
+            'status': 'done',
+            'promptId': result['promptId'],
+            'error': result['error'],
+        }
+    )
 
 
 def _workflow_is_open(session_id, tab_id, workflow_id):

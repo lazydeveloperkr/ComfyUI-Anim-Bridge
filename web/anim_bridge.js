@@ -3,6 +3,7 @@ import { api } from '../../scripts/api.js'
 import {
   applyInputValues,
   declaredInputs,
+  queueAndCapturePromptId,
   revisionPayload,
 } from './input_contract.js'
 
@@ -16,6 +17,7 @@ sessionStorage.setItem('anim-bridge-session', sessionId)
 sessionStorage.setItem('anim-bridge-tab', tabId)
 
 let completedCommandId = ''
+let commandResult = null
 let publishing = false
 let runningCommands = false
 
@@ -316,9 +318,16 @@ async function publish() {
     await api.fetchApi('/anim_bridge/v1/publish', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ sessionId, tabId, workflows, completedCommandId }),
+      body: JSON.stringify({
+        sessionId,
+        tabId,
+        workflows,
+        completedCommandId,
+        ...(commandResult ? { commandResult } : {}),
+      }),
     })
     completedCommandId = ''
+    commandResult = null
   } finally {
     publishing = false
   }
@@ -345,10 +354,24 @@ async function runCommands() {
         app.graph?.change?.()
         app.canvas?.setDirty?.(true, true)
       }
+      let result = null
+      if (command.type === 'queuePrompt') {
+        // The same path as the tab's Run button, so the prompt is exactly
+        // what ComfyUI itself would queue.
+        try {
+          const promptId = await queueAndCapturePromptId(api, () =>
+            app.queuePrompt(0, 1),
+          )
+          result = { commandId: command.commandId, promptId }
+        } catch (error) {
+          result = { commandId: command.commandId, error: String(error) }
+        }
+      }
       while (publishing) {
         await new Promise((resolve) => setTimeout(resolve, 25))
       }
       completedCommandId = command.commandId
+      commandResult = result
       await publish()
     }
   } catch (error) {

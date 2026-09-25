@@ -255,3 +255,22 @@ export function applyInputValues(getNodeById, inputValues) {
   }
   return applied
 }
+
+/// Runs [queue] (the tab's own Run) and returns the prompt id ComfyUI gave
+/// the queued prompt, by watching the api.queuePrompt call it makes.
+export async function queueAndCapturePromptId(api, queue) {
+  const original = api.queuePrompt
+  let promptId = ''
+  api.queuePrompt = async (...args) => {
+    const response = await original.apply(api, args)
+    if (!promptId && response?.prompt_id) promptId = String(response.prompt_id)
+    return response
+  }
+  try {
+    await queue()
+  } finally {
+    api.queuePrompt = original
+  }
+  if (!promptId) throw new Error('ComfyUI did not queue the workflow.')
+  return promptId
+}

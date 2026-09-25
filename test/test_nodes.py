@@ -571,9 +571,76 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_5(self):
+    def test_health_reports_bridge_version_6(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 5)
+        self.assertEqual(payload['bridgeVersion'], 6)
+
+    def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
+        bridge._sessions.clear()
+        bridge._commands.clear()
+        bridge._command_results.clear()
+        asyncio.run(
+            bridge.anim_bridge_publish(
+                _JsonRequest(
+                    {
+                        'sessionId': 's',
+                        'tabId': 't',
+                        'workflows': [{'workflowId': 'w.json'}],
+                    }
+                )
+            )
+        )
+        payload, status = asyncio.run(
+            bridge.anim_bridge_queue(
+                _JsonRequest(
+                    {'sessionId': 's', 'tabId': 't', 'workflowId': 'w.json'}
+                )
+            )
+        )
+        self.assertEqual(status, 202)
+        command_id = payload['commandId']
+        self.assertEqual(
+            bridge._commands[command_id]['type'],
+            'queuePrompt',
+        )
+
+        request = types.SimpleNamespace(query={'command_id': command_id})
+        pending, _ = asyncio.run(bridge.anim_bridge_command_result(request))
+        self.assertEqual(pending, {'status': 'pending'})
+
+        asyncio.run(
+            bridge.anim_bridge_publish(
+                _JsonRequest(
+                    {
+                        'sessionId': 's',
+                        'tabId': 't',
+                        'workflows': [{'workflowId': 'w.json'}],
+                        'completedCommandId': command_id,
+                        'commandResult': {
+                            'commandId': command_id,
+                            'promptId': 'prompt-7',
+                        },
+                    }
+                )
+            )
+        )
+        done, _ = asyncio.run(bridge.anim_bridge_command_result(request))
+        self.assertEqual(
+            done,
+            {'status': 'done', 'promptId': 'prompt-7', 'error': ''},
+        )
+        self.assertNotIn(command_id, bridge._commands)
+
+    def test_queue_route_rejects_a_closed_tab(self):
+        bridge._sessions.clear()
+        payload, status = asyncio.run(
+            bridge.anim_bridge_queue(
+                _JsonRequest(
+                    {'sessionId': 's', 'tabId': 't', 'workflowId': 'w.json'}
+                )
+            )
+        )
+        self.assertEqual(status, 404)
 
     def _qwen_graph(self, character_slot='images.image_1'):
         return {
