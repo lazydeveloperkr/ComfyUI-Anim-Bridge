@@ -30,7 +30,7 @@ function miniMaxH3Capacity(apiGraph, inputNodeId, kind, declaredCapacity) {
   return declaredCapacity
 }
 
-export const ANIM_IMAGE_INPUT_IDS = ['character', 'outfit', 'location']
+export const ANIM_IMAGE_INPUT_IDS = ['character', 'background', 'outfit']
 export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance']
 
 // Qwen-Image-2.1 refers to its reference images as <image1>, <image2>, ... in
