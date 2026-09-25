@@ -262,6 +262,18 @@ through the workflow's own switch/bypass logic, or keep a separate workflow
 open and select it in Anim. The Bridge never invents a placeholder image,
 video, or audio file because that would silently change the generated result.
 
+## Running a workflow from its tab
+
+Bridge 6 adds `POST /anim_bridge/v1/queue` with `sessionId`, `tabId`, and
+`workflowId`. The open ComfyUI tab runs the workflow through its own Run
+path (`app.queuePrompt`), exactly as if the Run button were pressed, and
+reports the queued prompt id. Anim reads it from
+`GET /anim_bridge/v1/command_result?command_id=...`, which answers
+`{"status": "pending"}` until the tab reports
+`{"status": "done", "promptId": "...", "error": ""}`. Anim uses this for image
+workflows so the prompt is the one ComfyUI itself builds, then reads the
+result from `/history`.
+
 ## Media input capacity
 
 The `max_references` field on each Anim Image, Video, or Audio References node
@@ -296,7 +308,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 5, "status": "ok"}
+{"bridgeVersion": 6, "status": "ok"}
 ```
 
 ## Update

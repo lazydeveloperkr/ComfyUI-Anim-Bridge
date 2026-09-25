@@ -364,3 +364,28 @@ assert.deepEqual(
   explicitAnimInputs(duplicateTextGraph).map((input) => input.duplicateSlotId),
   [true, true, false],
 )
+
+// Queue in the tab: the prompt id comes from the tab's own api.queuePrompt.
+{
+  const { queueAndCapturePromptId } = await import('../web/input_contract.js')
+  const calls = []
+  const fakeApi = {
+    async queuePrompt(number, prompt) {
+      calls.push([number, prompt])
+      return { prompt_id: 'prompt-7', number: 1 }
+    },
+  }
+  const original = fakeApi.queuePrompt
+  const promptId = await queueAndCapturePromptId(fakeApi, () =>
+    fakeApi.queuePrompt(0, { output: {} }),
+  )
+  assert.equal(promptId, 'prompt-7')
+  assert.equal(calls.length, 1)
+  assert.equal(fakeApi.queuePrompt, original)
+
+  await assert.rejects(
+    queueAndCapturePromptId(fakeApi, async () => {}),
+    /did not queue/,
+  )
+  assert.equal(fakeApi.queuePrompt, original)
+}
