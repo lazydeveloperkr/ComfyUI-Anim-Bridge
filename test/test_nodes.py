@@ -510,7 +510,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
 
     def test_image_input_offers_only_the_fixed_roles(self):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
-        self.assertEqual(image_id[0], ['character', 'background', 'outfit'])
+        self.assertEqual(image_id[0], ['character', 'outfit', 'location'])
         self.assertEqual(image_id[1]['default'], 'character')
 
     def test_image_input_rejects_an_unknown_role(self):
@@ -518,8 +518,8 @@ class AnimBridgeNodeTest(unittest.TestCase):
             bridge.AnimImageInput().load('face', 'face.png')
 
     def test_image_input_rejects_an_empty_image(self):
-        with self.assertRaisesRegex(ValueError, 'no background image'):
-            bridge.AnimImageInput().load('background', '  ')
+        with self.assertRaisesRegex(ValueError, 'no location image'):
+            bridge.AnimImageInput().load('location', '  ')
 
     def test_image_input_rejects_a_missing_file(self):
         with self.assertRaisesRegex(ValueError, 'not in the ComfyUI input'):
