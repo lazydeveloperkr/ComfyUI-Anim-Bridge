@@ -160,8 +160,8 @@ remain separate list entries.
 ### Role image input contract
 
 `Anim Image Input` receives exactly one Asset image for a fixed role. Its
-`image_id` widget is a dropdown with three values only: `character`,
-`background`, and `outfit`. Anim assigns one Asset to each role per Sequence and writes the
+`image_id` widget is a dropdown with three values only: `character`, `outfit`,
+and `location`. Anim assigns one Asset to each role per Sequence and writes the
 uploaded ComfyUI input file name into the node's `image` STRING widget. The
 node shows a preview and an upload button, loads the file like `Load Image`,
 and returns `image` (IMAGE) and `mask` (MASK).
@@ -173,7 +173,7 @@ and returns `image` (IMAGE) and `mask` (MASK).
   the run with a clear error. The Bridge never substitutes a placeholder.
 - When the `image` output is wired to `TextEncodeQwenImage21`
   `images.image_N`, the Bridge publishes `promptToken: "<imageN>"`. Anim users
-  write `{character}`, `{background}`, and `{outfit}` in the prompt, and Anim
+  write `{character}`, `{outfit}`, and `{location}` in the prompt, and Anim
   replaces each with the token of the matching node, so a prompt does not
   depend on which encoder slot a role is wired to. A role that does not reach
   the encoder has `promptToken: null`.
@@ -213,7 +213,7 @@ The character from {character}: {character_appearance}. {scene}
 ```
 
 - `{scene}` and `{character_appearance}` become the received texts.
-- `{character}`, `{background}`, and `{outfit}` become the `<imageN>` token of
+- `{character}`, `{outfit}`, and `{location}` become the `<imageN>` token of
   the matching `Anim Image Input` on the Qwen encoder this node feeds, so the
   appearance sentence always points at the character image even when it is
   not wired to `images.image_1`. A role in the template that is not wired to
@@ -223,10 +223,6 @@ The character from {character}: {character_appearance}. {scene}
 
 ### Qwen-Image-2.1 first-frame workflow
 
-The `background` role was called `location` before. A saved workflow whose
-Anim Image Input still shows `location` must be set to `background` in
-ComfyUI and saved again; Anim reports the old name as an unknown role.
-
 `workflows/qwen21_firstframe_anim.json` is the Anim-driven version of
 `workflows/qwen21_firstframe_3ref.json`:
 
@@ -234,7 +230,7 @@ ComfyUI and saved again; Anim reports the old name as an unknown role.
 | --- | --- |
 | `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
 | `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
-| `Anim Image Input` `background` | `TextEncodeQwenImage21` `images.image_3` |
+| `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
 | `Anim Text Input` `scene`, `character_appearance` | `Anim Qwen Prompt Compose` |
 | `Anim Qwen Prompt Compose` | `TextEncodeQwenImage21` `prompt` |
 | `Anim Resolution Input` | `Empty Latent Image` `width`, `height` |
