@@ -41,7 +41,7 @@ MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
 # Fixed roles an Anim Image Input can take. Anim assigns one Asset to each role
 # per Sequence, so the set is a closed contract rather than free text.
-ANIM_IMAGE_INPUT_IDS = ('character', 'outfit', 'location')
+ANIM_IMAGE_INPUT_IDS = ('character', 'background', 'outfit')
 # Fixed roles an Anim Text Input can take: the per-Sequence scene and the
 # per-character appearance that Anim reuses in every Sequence.
 ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance')
@@ -461,7 +461,7 @@ class AnimQwenPromptCompose:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Combines the scene and character appearance texts into one '
-        'Qwen-Image-2.1 prompt. {character}, {outfit}, and {location} in the '
+        'Qwen-Image-2.1 prompt. {character}, {background}, and {outfit} in the '
         'template become the <imageN> token of the matching Anim Image Input '
         'on the connected Qwen encoder.'
     )
@@ -531,7 +531,7 @@ class AnimImageInput:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives one Asset image from Anim for a fixed role: character, '
-        'outfit, or location. Anim matches the Asset to this node by its '
+        'background, or outfit. Anim matches the Asset to this node by its '
         'image_id and loads the file from the ComfyUI input folder.'
     )
 

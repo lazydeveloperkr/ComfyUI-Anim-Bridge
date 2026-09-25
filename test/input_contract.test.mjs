@@ -206,7 +206,7 @@ assert.equal(
 const qwenGraph = {
   12: { class_type: 'AnimImageInput', inputs: { image_id: 'character', image: 'char.webp' } },
   13: { class_type: 'AnimImageInput', inputs: { image_id: 'outfit', image: 'outfit.webp' } },
-  14: { class_type: 'AnimImageInput', inputs: { image_id: 'location', image: 'place.webp' } },
+  14: { class_type: 'AnimImageInput', inputs: { image_id: 'background', image: 'place.webp' } },
   21: { class_type: 'AnimResolutionInput', inputs: { width: 2048, height: 1152 } },
   30: {
     class_type: 'TextEncodeQwenImage21',
@@ -245,10 +245,10 @@ assert.deepEqual(explicitAnimInputs(qwenGraph), [
     nodeId: '14',
     inputName: 'image',
     kind: 'image',
-    label: 'Anim Image Input · location',
+    label: 'Anim Image Input · background',
     capacity: 1,
     encoding: 'scalar',
-    slotId: 'location',
+    slotId: 'background',
     promptToken: '<image3>',
     duplicateSlotId: false,
   },
@@ -281,7 +281,7 @@ assert.deepEqual(
   explicitAnimInputs(duplicateGraph)
     .filter((input) => input.kind === 'image')
     .map((input) => [input.slotId, input.duplicateSlotId]),
-  [['character', true], ['character', true], ['location', false]],
+  [['character', true], ['character', true], ['background', false]],
 )
 
 // Anim sees the role and token in the revision, but not runtime file names
