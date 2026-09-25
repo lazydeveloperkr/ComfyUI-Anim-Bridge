@@ -167,11 +167,17 @@ or adapter expected by the selected workflow. Normal ComfyUI list processing
 handles one file at a time; a custom downstream node that needs the whole array
 in one call must implement `INPUT_IS_LIST = True`.
 
-Reference nodes intentionally reject an empty array. If a media reference is
-optional for some Sequences, route that reference branch through the
-workflow's own switch/bypass logic, or keep a separate text-only workflow open
-and select it in Anim. The Bridge never invents a placeholder image, video, or
-audio file because that would silently change the generated result.
+`Anim Audio References` accepts an empty array because many Sequences have
+no dialogue or voice timbre. It then returns an empty `file_names` list and an
+empty `references` bundle, and **Anim MiniMax H3 Reference to Video** runs
+without audio references. A loader connected to `file_names` receives no
+files, so that branch must handle "no audio" itself.
+
+`Anim Image References` and `Anim Video References` still reject an empty
+array. If one of them is optional for some Sequences, route that branch
+through the workflow's own switch/bypass logic, or keep a separate workflow
+open and select it in Anim. The Bridge never invents a placeholder image,
+video, or audio file because that would silently change the generated result.
 
 ## Media input capacity
 

@@ -397,6 +397,35 @@ class AnimBridgeNodeTest(unittest.TestCase):
                 ref_audios=tuple(f'audio-{index}.wav' for index in range(4)),
             )
 
+    def test_audio_references_accept_an_empty_array(self):
+        self.assertEqual(
+            bridge.AnimAudioReferences().emit('[]', 3),
+            ([], ()),
+        )
+
+    def test_video_references_still_reject_an_empty_array(self):
+        with self.assertRaisesRegex(ValueError, 'no video references'):
+            bridge.AnimVideoReferences().emit('[]', 3)
+
+    def test_minimax_h3_wrapper_runs_without_audio_references(self):
+        _, empty_audio = bridge.AnimAudioReferences().emit('[]', 3)
+
+        result = bridge.AnimMiniMaxH3ReferenceToVideo.execute(
+            clip='clip',
+            vae='video-vae',
+            audio_vae='audio-vae',
+            prompt='prompt',
+            width=1344,
+            height=768,
+            length=124,
+            ref_images=(_ImageTensor('first'),),
+            ref_audios=empty_audio,
+        )
+
+        self.assertEqual(result, ('positive', 'latent'))
+        forwarded = _StockMiniMaxH3ReferenceToVideo.last_execute
+        self.assertIsNone(forwarded['ref_audios'])
+
     def test_minimax_h3_wrapper_replaces_only_the_stock_image_input(self):
         schema = bridge.AnimMiniMaxH3ReferenceToVideo.define_schema()
         inputs = {input_spec.id: input_spec for input_spec in schema.inputs}
