@@ -61,7 +61,11 @@ ComfyUI, and reload every open ComfyUI browser tab.
    References**, set each `max_references`, and connect the ordered
    `file_names` output to the matching loader contract in your workflow.
 7. Keep a save or output node that produces the file Anim should collect.
-8. Run the workflow once, keep its browser tab open, then refresh and select it
+8. To name output files after the Storyboard Sequence, add **Anim Sequence
+   Output** from `Anim / Inputs`. Convert the save node's `filename_prefix`
+   widget to an input, such as on `Save Video` or `Video Combine`, and connect
+   the Anim node's `filename_prefix` output to it.
+9. Run the workflow once, keep its browser tab open, then refresh and select it
    in Anim.
 
 Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
@@ -116,6 +120,23 @@ FLOAT widget. Anim recognizes it by its fixed node type. Connect its
 into a model parameter, such as a frame-count or length calculation. The node
 does not enforce a duration range beyond the widget's own `min`/`max`; the
 workflow decides what values are valid for the selected model.
+
+### Sequence output name contract
+
+`Anim Sequence Output` receives one output file name prefix through its
+`filename_prefix` STRING widget and returns the same STRING. Anim builds the
+prefix from the Sequence number and name for every run, for example
+`S001_Opening` or `S012_거실_공놀이`, and removes characters that are unsafe in
+file names or that ComfyUI treats specially, such as `/`, `\`, `:`, and `%`.
+The save node then adds its usual counter, so repeated runs of the same
+Sequence produce `S012_거실_공놀이_00001.mp4`, `S012_거실_공놀이_00002.mp4`, and
+so on.
+
+The node never saves a file itself; the workflow's existing save node still
+decides the format and location. Keep the workflow a shared template: do not
+type a Sequence name into the save node, because Anim replaces this widget at
+execution time. When the node runs without a value from Anim, it returns
+`ComfyUI`, the stock save-node default.
 
 ### Image reference array contract
 

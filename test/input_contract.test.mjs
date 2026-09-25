@@ -21,6 +21,10 @@ const graph = {
     class_type: 'AnimDurationInput',
     inputs: { duration: 5.0 },
   },
+  6: {
+    class_type: 'AnimSequenceOutput',
+    inputs: { filename_prefix: 'ComfyUI' },
+  },
   2: {
     class_type: 'AnimImageReferences',
     inputs: { image_paths: 'one.png\ntwo.png', max_references: 100 },
@@ -84,6 +88,14 @@ assert.deepEqual(explicitAnimInputs(graph), [
     capacity: 1,
     encoding: 'scalar',
   },
+  {
+    nodeId: '6',
+    inputName: 'filename_prefix',
+    kind: 'filenamePrefix',
+    label: 'Anim Sequence Output · filename_prefix',
+    capacity: 1,
+    encoding: 'scalar',
+  },
 ])
 
 assert.equal(
@@ -108,6 +120,7 @@ const graphWithRuntimeValues = structuredClone(graph)
 graphWithRuntimeValues[1].inputs.prompt = 'A generated prompt'
 graphWithRuntimeValues[2].inputs.image_paths = 'new-one.png\nnew-two.png'
 graphWithRuntimeValues[3].inputs.references_json = '["clip.mp4"]'
+graphWithRuntimeValues[6].inputs.filename_prefix = 'S003_거실_공놀이'
 const revisionB = revisionPayload(
   graphWithRuntimeValues,
   explicitAnimInputs(graphWithRuntimeValues),

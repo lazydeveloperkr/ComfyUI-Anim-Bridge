@@ -265,6 +265,22 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertEqual(inputs['duration'][1]['default'], 5.0)
         self.assertEqual(inputs['duration'][1]['step'], 1.0)
 
+    def test_sequence_output_returns_the_filename_prefix(self):
+        self.assertEqual(
+            bridge.AnimSequenceOutput().emit('S003_거실_공놀이'),
+            ('S003_거실_공놀이',),
+        )
+
+    def test_sequence_output_falls_back_to_the_stock_prefix(self):
+        self.assertEqual(bridge.AnimSequenceOutput().emit('  '), ('ComfyUI',))
+
+    def test_sequence_output_declares_a_string_widget(self):
+        inputs = bridge.AnimSequenceOutput.INPUT_TYPES()['required']
+
+        self.assertEqual(list(inputs), ['filename_prefix'])
+        self.assertEqual(inputs['filename_prefix'][0], 'STRING')
+        self.assertEqual(bridge.AnimSequenceOutput.RETURN_TYPES, ('STRING',))
+
     def test_image_references_preserve_array_order(self):
         result = bridge.AnimImageReferences().load(
             'one.png\ntwo.png',
@@ -435,6 +451,16 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertEqual(
             bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimDurationInput'],
             'Anim Duration Input',
+        )
+
+    def test_sequence_output_is_registered(self):
+        self.assertIs(
+            bridge.NODE_CLASS_MAPPINGS['AnimSequenceOutput'],
+            bridge.AnimSequenceOutput,
+        )
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimSequenceOutput'],
+            'Anim Sequence Output',
         )
 
     def test_reference_capacity_is_enforced(self):

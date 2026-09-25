@@ -266,6 +266,37 @@ class AnimDurationInput:
         return (float(duration),)
 
 
+class AnimSequenceOutput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'filename_prefix': (
+                    'STRING',
+                    {
+                        'default': 'ComfyUI',
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ('STRING',)
+    RETURN_NAMES = ('filename_prefix',)
+    FUNCTION = 'emit'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives the output file name prefix Anim builds from the Sequence '
+        'number and name, such as S001_Opening. Connect it to the '
+        'filename_prefix input of the existing save node; this node does not '
+        'save files.'
+    )
+
+    def emit(self, filename_prefix):
+        # Anim sends an already sanitized prefix. An empty value falls back to
+        # the stock save-node default instead of producing a nameless file.
+        return (str(filename_prefix).strip() or 'ComfyUI',)
+
+
 class AnimImageReferences:
     @classmethod
     def INPUT_TYPES(cls):
@@ -639,6 +670,7 @@ class AnimAudioReferences:
 NODE_CLASS_MAPPINGS = {
     'AnimPromptInput': AnimPromptInput,
     'AnimDurationInput': AnimDurationInput,
+    'AnimSequenceOutput': AnimSequenceOutput,
     'AnimImageReferences': AnimImageReferences,
     'AnimVideoReferences': AnimVideoReferences,
     'AnimAudioReferences': AnimAudioReferences,
@@ -646,6 +678,7 @@ NODE_CLASS_MAPPINGS = {
 NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimPromptInput': 'Anim Prompt Input',
     'AnimDurationInput': 'Anim Duration Input',
+    'AnimSequenceOutput': 'Anim Sequence Output',
     'AnimImageReferences': 'Anim Image References',
     'AnimVideoReferences': 'Anim Video References',
     'AnimAudioReferences': 'Anim Audio References',

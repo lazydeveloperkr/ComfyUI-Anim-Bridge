@@ -52,6 +52,15 @@ export function explicitAnimInputs(apiGraph) {
         capacity: 1,
         encoding: 'scalar',
       })
+    } else if (classType === 'AnimSequenceOutput') {
+      inputs.push({
+        nodeId,
+        inputName: 'filename_prefix',
+        kind: 'filenamePrefix',
+        label: 'Anim Sequence Output · filename_prefix',
+        capacity: 1,
+        encoding: 'scalar',
+      })
     } else if (
       classType === 'AnimImageReferences' ||
       classType === 'AnimVideoReferences' ||
