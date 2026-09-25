@@ -1,6 +1,6 @@
 {
- "last_node_id": 22,
- "last_link_id": 17,
+ "last_node_id": 25,
+ "last_link_id": 20,
  "nodes": [
   {
    "id": 1,
@@ -290,7 +290,7 @@
      "widget": {
       "name": "prompt"
      },
-     "link": 14
+     "link": 20
     },
     {
      "localized_name": "image_1",
@@ -353,7 +353,7 @@
     "",
     1024
    ],
-   "title": "Prompt ({character}=<image1>, {outfit}=<image2>, {location}=<image3>)"
+   "title": "Prompt (from Anim Qwen Prompt Compose)"
   },
   {
    "id": 15,
@@ -555,39 +555,6 @@
    ]
   },
   {
-   "id": 20,
-   "type": "AnimPromptInput",
-   "pos": [
-    380,
-    -460
-   ],
-   "size": [
-    400,
-    200
-   ],
-   "flags": {},
-   "order": 0,
-   "mode": 0,
-   "inputs": [],
-   "outputs": [
-    {
-     "localized_name": "prompt",
-     "name": "prompt",
-     "type": "STRING",
-     "links": [
-      14
-     ]
-    }
-   ],
-   "properties": {
-    "Node name for S&R": "AnimPromptInput"
-   },
-   "widgets_values": [
-    "<image1> is the character reference: a woman in her twenties. <image2> is an outfit reference sheet: use only the clothes, not the face of the model in it. <image3> is a location sheet. Create a new photo: the adult woman from <image1>, keeping her exact face and hair, wearing the outfit from <image2>, in the location from <image3>. Describe the action, pose, expression, camera angle and lighting here. Photorealistic, 35mm photo, high detail."
-   ],
-   "title": "Anim Prompt Input"
-  },
-  {
    "id": 21,
    "type": "AnimResolutionInput",
    "pos": [
@@ -661,6 +628,121 @@
     "firstframe/qwen21"
    ],
    "title": "Anim Sequence Output"
+  },
+  {
+   "id": 23,
+   "type": "AnimTextInput",
+   "pos": [
+    0,
+    -560
+   ],
+   "size": [
+    360,
+    200
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      18
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "scene",
+    "She sits at the billiards table and laughs, holding a cue. Eye-level medium shot, warm evening light. Photorealistic, 35mm photo, high detail."
+   ],
+   "title": "Anim Text Input - scene"
+  },
+  {
+   "id": 24,
+   "type": "AnimTextInput",
+   "pos": [
+    0,
+    -330
+   ],
+   "size": [
+    360,
+    160
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      19
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "character_appearance",
+    "a woman in her twenties, freckles, long braided hair, natural makeup"
+   ],
+   "title": "Anim Text Input - character_appearance"
+  },
+  {
+   "id": 25,
+   "type": "AnimQwenPromptCompose",
+   "pos": [
+    400,
+    -460
+   ],
+   "size": [
+    380,
+    200
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "scene",
+     "name": "scene",
+     "type": "STRING",
+     "link": 18
+    },
+    {
+     "localized_name": "character_appearance",
+     "name": "character_appearance",
+     "shape": 7,
+     "type": "STRING",
+     "link": 19
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "prompt",
+     "name": "prompt",
+     "type": "STRING",
+     "links": [
+      20
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimQwenPromptCompose"
+   },
+   "widgets_values": [
+    "The character from {character}: {character_appearance}. {scene}"
+   ],
+   "title": "Anim Qwen Prompt Compose"
   }
  ],
  "links": [
@@ -769,14 +851,6 @@
    "IMAGE"
   ],
   [
-   14,
-   20,
-   0,
-   14,
-   1,
-   "STRING"
-  ],
-  [
    15,
    21,
    0,
@@ -797,6 +871,30 @@
    22,
    0,
    18,
+   1,
+   "STRING"
+  ],
+  [
+   18,
+   23,
+   0,
+   25,
+   0,
+   "STRING"
+  ],
+  [
+   19,
+   24,
+   0,
+   25,
+   1,
+   "STRING"
+  ],
+  [
+   20,
+   25,
+   0,
+   14,
    1,
    "STRING"
   ]

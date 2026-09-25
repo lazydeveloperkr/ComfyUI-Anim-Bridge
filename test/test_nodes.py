@@ -546,6 +546,96 @@ class AnimBridgeNodeTest(unittest.TestCase):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
         self.assertEqual(payload['bridgeVersion'], 5)
 
+    def _qwen_graph(self, character_slot='images.image_1'):
+        return {
+            '1': {'class_type': 'AnimImageInput', 'inputs': {'image_id': 'character', 'image': 'c.png'}},
+            '2': {'class_type': 'AnimImageInput', 'inputs': {'image_id': 'outfit', 'image': 'o.png'}},
+            '25': {'class_type': 'AnimQwenPromptCompose', 'inputs': {}},
+            '14': {
+                'class_type': 'TextEncodeQwenImage21',
+                'inputs': {
+                    'prompt': ['25', 0],
+                    character_slot: ['1', 0],
+                    'images.image_3': ['2', 0],
+                },
+            },
+        }
+
+    def test_text_input_returns_the_text_for_its_role(self):
+        self.assertEqual(
+            bridge.AnimTextInput().emit('scene', 'She laughs.'),
+            ('She laughs.',),
+        )
+        text_id = bridge.AnimTextInput.INPUT_TYPES()['required']['text_id']
+        self.assertEqual(text_id[0], ['scene', 'character_appearance'])
+
+    def test_text_input_rejects_an_unknown_role(self):
+        with self.assertRaisesRegex(ValueError, 'unknown text_id "style"'):
+            bridge.AnimTextInput().emit('style', 'noir')
+
+    def test_prompt_compose_uses_the_character_token_from_the_graph(self):
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She sits at the bar.',
+            bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+            'freckles, red braid',
+            prompt=self._qwen_graph('images.image_2'),
+            unique_id='25',
+        )
+        self.assertEqual(
+            prompt,
+            'The character from <image2>: freckles, red braid. '
+            'She sits at the bar.',
+        )
+
+    def test_prompt_compose_resolves_every_role_in_the_template(self):
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'Walks in.',
+            '{character} wears {outfit}. {scene}',
+            prompt=self._qwen_graph(),
+            unique_id='25',
+        )
+        self.assertEqual(prompt, '<image1> wears <image3>. Walks in.')
+
+    def test_prompt_compose_drops_the_empty_appearance_sentence(self):
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She sits at the bar.',
+            bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+            '  ',
+            prompt=self._qwen_graph(),
+            unique_id='25',
+        )
+        self.assertEqual(prompt, 'She sits at the bar.')
+
+    def test_prompt_compose_requires_a_scene(self):
+        with self.assertRaisesRegex(ValueError, 'no scene text'):
+            bridge.AnimQwenPromptCompose().compose(
+                ' ',
+                bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+                'freckles',
+            )
+
+    def test_prompt_compose_rejects_a_role_not_wired_to_the_encoder(self):
+        graph = self._qwen_graph()
+        del graph['14']['inputs']['images.image_1']
+        with self.assertRaisesRegex(ValueError, 'no character Anim Image Input'):
+            bridge.AnimQwenPromptCompose().compose(
+                'Walks in.',
+                bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+                'freckles',
+                prompt=graph,
+                unique_id='25',
+            )
+
+    def test_text_input_and_prompt_compose_are_registered(self):
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimTextInput'],
+            'Anim Text Input',
+        )
+        self.assertEqual(
+            bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimQwenPromptCompose'],
+            'Anim Qwen Prompt Compose',
+        )
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -315,3 +315,52 @@ assert.deepEqual(
   revisionPayload(resizedGraph, explicitAnimInputs(resizedGraph), ['40']),
   qwenRevision,
 )
+
+const textGraph = {
+  23: { class_type: 'AnimTextInput', inputs: { text_id: 'scene', text: 'She sits.' } },
+  24: { class_type: 'AnimTextInput', inputs: { text_id: 'character_appearance', text: 'freckles' } },
+  30: { class_type: 'AnimImageInput', inputs: { image_id: 'character', image: 'c.webp' } },
+}
+assert.deepEqual(explicitAnimInputs(textGraph).slice(0, 2), [
+  {
+    nodeId: '23',
+    inputName: 'text',
+    kind: 'text',
+    label: 'Anim Text Input · scene',
+    capacity: 1,
+    encoding: 'scalar',
+    slotId: 'scene',
+    duplicateSlotId: false,
+  },
+  {
+    nodeId: '24',
+    inputName: 'text',
+    kind: 'text',
+    label: 'Anim Text Input · character_appearance',
+    capacity: 1,
+    encoding: 'scalar',
+    slotId: 'character_appearance',
+    duplicateSlotId: false,
+  },
+])
+
+// Text and image roles are checked separately, and the revision carries the
+// text role without a prompt token or the runtime text.
+const textRevision = revisionPayload(textGraph, explicitAnimInputs(textGraph), [])
+assert.deepEqual(textRevision.inputs[0], {
+  nodeId: '23',
+  inputName: 'text',
+  kind: 'text',
+  capacity: 1,
+  encoding: 'scalar',
+  slotId: 'scene',
+  duplicateSlotId: false,
+})
+assert.equal(textRevision.apiGraph[23].inputs.text, '__ANIM_RUNTIME_INPUT__')
+
+const duplicateTextGraph = structuredClone(textGraph)
+duplicateTextGraph[24].inputs.text_id = 'scene'
+assert.deepEqual(
+  explicitAnimInputs(duplicateTextGraph).map((input) => input.duplicateSlotId),
+  [true, true, false],
+)

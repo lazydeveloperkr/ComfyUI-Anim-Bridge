@@ -31,6 +31,7 @@ function miniMaxH3Capacity(apiGraph, inputNodeId, kind, declaredCapacity) {
 }
 
 export const ANIM_IMAGE_INPUT_IDS = ['character', 'outfit', 'location']
+export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance']
 
 // Qwen-Image-2.1 refers to its reference images as <image1>, <image2>, ... in
 // the prompt, numbered by the encoder input the image is wired to.
@@ -51,9 +52,17 @@ function qwenImagePromptToken(apiGraph, inputNodeId) {
   return null
 }
 
+// Roles are unique per node type: one character image and one scene text.
+function addSlotInput(inputsBySlot, classType, input) {
+  const key = `${classType}\0${input.slotId}`
+  const sameSlot = inputsBySlot.get(key) || []
+  sameSlot.push(input)
+  inputsBySlot.set(key, sameSlot)
+}
+
 export function explicitAnimInputs(apiGraph) {
   const inputs = []
-  const imageInputsBySlot = new Map()
+  const inputsBySlot = new Map()
   for (const [nodeId, node] of Object.entries(apiGraph || {})) {
     const classType = String(node?.class_type || '')
     if (classType === 'AnimPromptInput') {
@@ -96,9 +105,21 @@ export function explicitAnimInputs(apiGraph) {
         promptToken: qwenImagePromptToken(apiGraph, nodeId),
         duplicateSlotId: false,
       }
-      const sameSlot = imageInputsBySlot.get(slotId) || []
-      sameSlot.push(input)
-      imageInputsBySlot.set(slotId, sameSlot)
+      addSlotInput(inputsBySlot, classType, input)
+      inputs.push(input)
+    } else if (classType === 'AnimTextInput') {
+      const slotId = String(node?.inputs?.text_id || '')
+      const input = {
+        nodeId,
+        inputName: 'text',
+        kind: 'text',
+        label: `Anim Text Input · ${slotId}`,
+        capacity: 1,
+        encoding: 'scalar',
+        slotId,
+        duplicateSlotId: false,
+      }
+      addSlotInput(inputsBySlot, classType, input)
       inputs.push(input)
     } else if (classType === 'AnimResolutionInput') {
       for (const inputName of ['width', 'height']) {
@@ -134,7 +155,7 @@ export function explicitAnimInputs(apiGraph) {
   }
   // Two nodes with one role would make Anim's Asset assignment ambiguous, so
   // both are flagged and Anim blocks generation instead of picking one.
-  for (const sameSlot of imageInputsBySlot.values()) {
+  for (const sameSlot of inputsBySlot.values()) {
     if (sameSlot.length < 2) continue
     for (const input of sameSlot) input.duplicateSlotId = true
   }
@@ -195,7 +216,9 @@ export function revisionPayload(apiGraph, inputs, outputNodeIds = []) {
         ? {}
         : {
             slotId: String(input.slotId),
-            promptToken: input.promptToken ?? null,
+            ...(Object.hasOwn(input, 'promptToken')
+              ? { promptToken: input.promptToken ?? null }
+              : {}),
             duplicateSlotId: input.duplicateSlotId === true,
           }),
     })),

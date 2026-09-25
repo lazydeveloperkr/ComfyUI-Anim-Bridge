@@ -1,5 +1,6 @@
 import copy
 import json
+import re
 import time
 import uuid
 
@@ -41,6 +42,13 @@ MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
 # Fixed roles an Anim Image Input can take. Anim assigns one Asset to each role
 # per Sequence, so the set is a closed contract rather than free text.
 ANIM_IMAGE_INPUT_IDS = ('character', 'outfit', 'location')
+# Fixed roles an Anim Text Input can take: the per-Sequence scene and the
+# per-character appearance that Anim reuses in every Sequence.
+ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance')
+ANIM_QWEN_PROMPT_TEMPLATE = (
+    'The character from {character}: {character_appearance}. {scene}'
+)
+_APPEARANCE_SENTENCE = re.compile(r'[^.]*\{character_appearance\}[^.]*\.?\s*')
 # Qwen-Image-2.1 expects latent sizes in multiples of 32.
 ANIM_RESOLUTION_STEP = 32
 ANIM_RESOLUTION_MIN = 256
@@ -352,6 +360,151 @@ class AnimImageReferences:
             images.append(image)
             masks.append(mask)
         return (images, masks, references, tuple(images))
+
+
+class AnimTextInput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'text_id': (
+                    list(ANIM_TEXT_INPUT_IDS),
+                    {'default': ANIM_TEXT_INPUT_IDS[0]},
+                ),
+                'text': (
+                    'STRING',
+                    {
+                        'default': '',
+                        'multiline': True,
+                    },
+                ),
+            },
+        }
+
+    RETURN_TYPES = ('STRING',)
+    RETURN_NAMES = ('text',)
+    FUNCTION = 'emit'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives one text from Anim for a fixed role: scene (per Sequence) '
+        'or character_appearance (per character Asset).'
+    )
+
+    def emit(self, text_id, text):
+        if text_id not in ANIM_TEXT_INPUT_IDS:
+            raise ValueError(
+                f'Anim Text Input has an unknown text_id "{text_id}". '
+                f'Use one of: {", ".join(ANIM_TEXT_INPUT_IDS)}.'
+            )
+        return (str(text),)
+
+
+def _qwen_image_tokens(graph, encoder_id):
+    """Maps each Anim Image Input role wired to a Qwen encoder to <imageN>."""
+    tokens = {}
+    encoder = graph.get(str(encoder_id)) or {}
+    for input_name, connection in (encoder.get('inputs') or {}).items():
+        if not input_name.startswith('images.image_'):
+            continue
+        slot = input_name[len('images.image_'):]
+        if not slot.isdigit() or not isinstance(connection, (list, tuple)):
+            continue
+        source = graph.get(str(connection[0])) or {}
+        if source.get('class_type') != 'AnimImageInput':
+            continue
+        role = (source.get('inputs') or {}).get('image_id')
+        if role in ANIM_IMAGE_INPUT_IDS:
+            tokens[role] = f'<image{slot}>'
+    return tokens
+
+
+def _downstream_qwen_encoders(graph, node_id):
+    return [
+        encoder_id
+        for encoder_id, node in graph.items()
+        if node.get('class_type') == 'TextEncodeQwenImage21'
+        and any(
+            isinstance(connection, (list, tuple))
+            and connection
+            and str(connection[0]) == str(node_id)
+            for connection in (node.get('inputs') or {}).values()
+        )
+    ]
+
+
+class AnimQwenPromptCompose:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'scene': ('STRING', {'forceInput': True}),
+                'template': (
+                    'STRING',
+                    {
+                        'default': ANIM_QWEN_PROMPT_TEMPLATE,
+                        'multiline': True,
+                    },
+                ),
+            },
+            'optional': {
+                'character_appearance': ('STRING', {'forceInput': True}),
+            },
+            'hidden': {
+                'prompt': 'PROMPT',
+                'unique_id': 'UNIQUE_ID',
+            },
+        }
+
+    RETURN_TYPES = ('STRING',)
+    RETURN_NAMES = ('prompt',)
+    FUNCTION = 'compose'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Combines the scene and character appearance texts into one '
+        'Qwen-Image-2.1 prompt. {character}, {outfit}, and {location} in the '
+        'template become the <imageN> token of the matching Anim Image Input '
+        'on the connected Qwen encoder.'
+    )
+
+    def compose(
+        self,
+        scene,
+        template,
+        character_appearance=None,
+        prompt=None,
+        unique_id=None,
+    ):
+        scene = str(scene or '').strip()
+        if not scene:
+            raise ValueError('Anim sent no scene text to compose.')
+        appearance = str(character_appearance or '').strip()
+        text = str(template)
+        if appearance:
+            text = text.replace('{character_appearance}', appearance)
+        else:
+            # Drop the whole appearance sentence rather than leaving ": ."
+            text = _APPEARANCE_SENTENCE.sub('', text)
+        text = text.replace('{scene}', scene)
+
+        graph = prompt if isinstance(prompt, dict) else {}
+        encoders = _downstream_qwen_encoders(graph, unique_id)
+        tokens = (
+            _qwen_image_tokens(graph, encoders[0])
+            if len(encoders) == 1
+            else {}
+        )
+        for role in ANIM_IMAGE_INPUT_IDS:
+            placeholder = '{' + role + '}'
+            if placeholder not in text:
+                continue
+            if role not in tokens:
+                raise ValueError(
+                    f'The prompt template uses {placeholder}, but no {role} '
+                    'Anim Image Input is wired to the Qwen encoder that '
+                    'receives this prompt.'
+                )
+            text = text.replace(placeholder, tokens[role])
+        return (text.strip(),)
 
 
 class AnimImageInput:
@@ -780,6 +933,8 @@ NODE_CLASS_MAPPINGS = {
     'AnimPromptInput': AnimPromptInput,
     'AnimDurationInput': AnimDurationInput,
     'AnimSequenceOutput': AnimSequenceOutput,
+    'AnimTextInput': AnimTextInput,
+    'AnimQwenPromptCompose': AnimQwenPromptCompose,
     'AnimImageInput': AnimImageInput,
     'AnimResolutionInput': AnimResolutionInput,
     'AnimImageReferences': AnimImageReferences,
@@ -790,6 +945,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimPromptInput': 'Anim Prompt Input',
     'AnimDurationInput': 'Anim Duration Input',
     'AnimSequenceOutput': 'Anim Sequence Output',
+    'AnimTextInput': 'Anim Text Input',
+    'AnimQwenPromptCompose': 'Anim Qwen Prompt Compose',
     'AnimImageInput': 'Anim Image Input',
     'AnimResolutionInput': 'Anim Resolution Input',
     'AnimImageReferences': 'Anim Image References',
