@@ -44,7 +44,14 @@ MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
 # Fixed roles an Anim Image Input can take. Anim assigns one Asset to each role
 # per Sequence, so the set is a closed contract rather than free text.
-ANIM_IMAGE_INPUT_IDS = ('character', 'outfit', 'location')
+# keyframe_reference is an earlier keyframe image of the same Storyboard
+# Sequence, sent when Anim draws the next keyframe of that scene.
+ANIM_IMAGE_INPUT_IDS = (
+    'character',
+    'outfit',
+    'location',
+    'keyframe_reference',
+)
 # Fixed roles an Anim Text Input can take: the per-Sequence scene and the
 # per-character appearance that Anim reuses in every Sequence.
 ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance')
@@ -66,7 +73,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 6, 'status': 'ok'})
+    return _json({'bridgeVersion': 7, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -512,8 +519,8 @@ class AnimQwenPromptCompose:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Combines the scene and character appearance texts into one '
-        'Qwen-Image-2.1 prompt. {character}, {outfit}, and {location} in the '
-        'template become the <imageN> token of the matching Anim Image Input '
+        'Qwen-Image-2.1 prompt. {character}, {outfit}, {location}, and '
+        '{keyframe_reference} in the template become the <imageN> token of the matching Anim Image Input '
         'on the connected Qwen encoder.'
     )
 
@@ -582,7 +589,8 @@ class AnimImageInput:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives one Asset image from Anim for a fixed role: character, '
-        'outfit, or location. Anim matches the Asset to this node by its '
+        'outfit, location, or keyframe_reference (an earlier keyframe of '
+        'the same Storyboard Sequence). Anim matches the Asset to this node by its '
         'image_id and loads the file from the ComfyUI input folder.'
     )
 

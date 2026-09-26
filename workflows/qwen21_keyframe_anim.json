@@ -1,0 +1,2068 @@
+{
+ "last_node_id": 45,
+ "last_link_id": 53,
+ "nodes": [
+  {
+   "id": 1,
+   "type": "AnimImageInput",
+   "pos": [
+    0,
+    0
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      3,
+      25,
+      32,
+      38,
+      41
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "character",
+    "char_braid.webp"
+   ],
+   "title": "Anim Image Input - character"
+  },
+  {
+   "id": 2,
+   "type": "AnimImageInput",
+   "pos": [
+    0,
+    330
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 1,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      4
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "outfit",
+    "outfit_yello_sheet.webp"
+   ],
+   "title": "Anim Image Input - outfit"
+  },
+  {
+   "id": 3,
+   "type": "AnimImageInput",
+   "pos": [
+    0,
+    660
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 2,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      5
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "location",
+    "location_club_billiards.webp"
+   ],
+   "title": "Anim Image Input - location"
+  },
+  {
+   "id": 4,
+   "type": "AnimImageInput",
+   "pos": [
+    0,
+    990
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      53
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "keyframe_reference",
+    "keyframe_previous.webp"
+   ],
+   "title": "Anim Image Input - keyframe_reference"
+  },
+  {
+   "id": 10,
+   "type": "UNETLoader",
+   "pos": [
+    420,
+    0
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      1
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "UNETLoader"
+   },
+   "widgets_values": [
+    "qwen_image_2.1_int8_convrot.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 11,
+   "type": "CLIPLoader",
+   "pos": [
+    420,
+    150
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 4,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "CLIP",
+     "name": "CLIP",
+     "type": "CLIP",
+     "links": [
+      2
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPLoader"
+   },
+   "widgets_values": [
+    "qwen3vl_8b_int8_convrot.safetensors",
+    "qwen_image",
+    "default"
+   ]
+  },
+  {
+   "id": 12,
+   "type": "VAELoader",
+   "pos": [
+    420,
+    300
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 5,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "VAE",
+     "name": "VAE",
+     "type": "VAE",
+     "links": [
+      6,
+      12
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "qwen_image_2.1_vae_bf16.safetensors"
+   ]
+  },
+  {
+   "id": 13,
+   "type": "QwenImage21Cache",
+   "pos": [
+    420,
+    420
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 6,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 1
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      7
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "QwenImage21Cache"
+   },
+   "widgets_values": [
+    "auto",
+    "default"
+   ]
+  },
+  {
+   "id": 14,
+   "type": "TextEncodeQwenImage21",
+   "pos": [
+    800,
+    0
+   ],
+   "size": [
+    520,
+    420
+   ],
+   "flags": {},
+   "order": 7,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 2
+    },
+    {
+     "localized_name": "prompt",
+     "name": "prompt",
+     "type": "STRING",
+     "widget": {
+      "name": "prompt"
+     },
+     "link": 20
+    },
+    {
+     "localized_name": "image_1",
+     "name": "images.image_1",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 3
+    },
+    {
+     "localized_name": "image_2",
+     "name": "images.image_2",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 4
+    },
+    {
+     "localized_name": "image_3",
+     "name": "images.image_3",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 5
+    },
+    {
+     "localized_name": "image_4",
+     "name": "images.image_4",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 53
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 6,
+     "shape": 7
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "positive",
+     "name": "positive",
+     "type": "CONDITIONING",
+     "links": [
+      8
+     ]
+    },
+    {
+     "localized_name": "negative",
+     "name": "negative",
+     "type": "CONDITIONING",
+     "links": [
+      9
+     ]
+    },
+    {
+     "localized_name": "latent",
+     "name": "latent",
+     "type": "LATENT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "TextEncodeQwenImage21"
+   },
+   "widgets_values": [
+    "<image1> is the character reference. <image2> is an outfit reference sheet: use only the clothes, not the face of the model in it. <image3> is a location sheet. <image4> is an earlier keyframe of the same scene. Create the next moment of that scene: the character from <image1>, keeping her exact face and hair, wearing the outfit from <image2>, in the location from <image3>, consistent with <image4>. Describe the action, pose, expression, camera angle and lighting here. Photorealistic, 35mm photo, high detail.",
+    "",
+    1024
+   ],
+   "title": "Prompt (from Anim Qwen Prompt Compose)"
+  },
+  {
+   "id": 15,
+   "type": "EmptyLatentImage",
+   "pos": [
+    420,
+    560
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 8,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "widget": {
+      "name": "width"
+     },
+     "link": 15
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "widget": {
+      "name": "height"
+     },
+     "link": 16
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      10
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "EmptyLatentImage"
+   },
+   "widgets_values": [
+    2048,
+    1152,
+    1
+   ],
+   "title": "Output size (from Anim)"
+  },
+  {
+   "id": 16,
+   "type": "KSampler",
+   "pos": [
+    1360,
+    0
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 9,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 7
+    },
+    {
+     "localized_name": "positive",
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 8
+    },
+    {
+     "localized_name": "negative",
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 9
+    },
+    {
+     "localized_name": "latent_image",
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 10
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      11
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "KSampler"
+   },
+   "widgets_values": [
+    777,
+    "fixed",
+    25,
+    1.0,
+    "euler",
+    "simple",
+    1.0
+   ]
+  },
+  {
+   "id": 17,
+   "type": "VAEDecode",
+   "pos": [
+    1360,
+    500
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 10,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": 11
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 12
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      21,
+      48,
+      51
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 18,
+   "type": "SaveImage",
+   "pos": [
+    1700,
+    0
+   ],
+   "size": [
+    520,
+    420
+   ],
+   "flags": {},
+   "order": 11,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 52
+    },
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "widget": {
+      "name": "filename_prefix"
+     },
+     "link": 17
+    }
+   ],
+   "outputs": [],
+   "properties": {
+    "Node name for S&R": "SaveImage"
+   },
+   "widgets_values": [
+    "keyframe/qwen21"
+   ]
+  },
+  {
+   "id": 21,
+   "type": "AnimResolutionInput",
+   "pos": [
+    420,
+    700
+   ],
+   "size": [
+    300,
+    110
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "width",
+     "name": "width",
+     "type": "INT",
+     "links": [
+      15
+     ]
+    },
+    {
+     "localized_name": "height",
+     "name": "height",
+     "type": "INT",
+     "links": [
+      16
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimResolutionInput"
+   },
+   "widgets_values": [
+    2048,
+    1152
+   ],
+   "title": "Anim Resolution Input"
+  },
+  {
+   "id": 22,
+   "type": "AnimSequenceOutput",
+   "pos": [
+    1360,
+    700
+   ],
+   "size": [
+    300,
+    80
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "filename_prefix",
+     "name": "filename_prefix",
+     "type": "STRING",
+     "links": [
+      17
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimSequenceOutput"
+   },
+   "widgets_values": [
+    "keyframe/qwen21"
+   ],
+   "title": "Anim Sequence Output"
+  },
+  {
+   "id": 23,
+   "type": "AnimTextInput",
+   "pos": [
+    0,
+    -560
+   ],
+   "size": [
+    360,
+    200
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      18
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "scene",
+    "She sits at the billiards table and laughs, holding a cue. Eye-level medium shot, warm evening light. Photorealistic, 35mm photo, high detail."
+   ],
+   "title": "Anim Text Input - scene"
+  },
+  {
+   "id": 24,
+   "type": "AnimTextInput",
+   "pos": [
+    0,
+    -330
+   ],
+   "size": [
+    360,
+    160
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      19,
+      34
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "character_appearance",
+    "a woman in her twenties, freckles, long braided hair, natural makeup"
+   ],
+   "title": "Anim Text Input - character_appearance"
+  },
+  {
+   "id": 25,
+   "type": "AnimQwenPromptCompose",
+   "pos": [
+    400,
+    -460
+   ],
+   "size": [
+    380,
+    200
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "scene",
+     "name": "scene",
+     "type": "STRING",
+     "link": 18
+    },
+    {
+     "localized_name": "character_appearance",
+     "name": "character_appearance",
+     "shape": 7,
+     "type": "STRING",
+     "link": 19
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "prompt",
+     "name": "prompt",
+     "type": "STRING",
+     "links": [
+      20
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimQwenPromptCompose"
+   },
+   "widgets_values": [
+    "The character from {character}: {character_appearance}. Keep the same place, lighting, and outfit as the earlier keyframe {keyframe_reference}. {scene}"
+   ],
+   "title": "Anim Qwen Prompt Compose"
+  },
+  {
+   "id": 30,
+   "type": "H3FaceTrackCrop",
+   "pos": [
+    420,
+    1400
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 17,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 21
+    },
+    {
+     "localized_name": "identity_reference",
+     "name": "identity_reference",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "crops",
+     "name": "crops",
+     "type": "IMAGE",
+     "links": [
+      23,
+      31,
+      37,
+      40
+     ]
+    },
+    {
+     "localized_name": "transform",
+     "name": "transform",
+     "type": "H3FACEXFORM",
+     "links": [
+      50
+     ]
+    },
+    {
+     "localized_name": "preview",
+     "name": "preview",
+     "type": "IMAGE",
+     "links": []
+    },
+    {
+     "localized_name": "report",
+     "name": "report",
+     "type": "STRING",
+     "links": []
+    },
+    {
+     "localized_name": "canvas_w",
+     "name": "canvas_w",
+     "type": "INT",
+     "links": []
+    },
+    {
+     "localized_name": "canvas_h",
+     "name": "canvas_h",
+     "type": "INT",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "H3FaceTrackCrop"
+   },
+   "widgets_values": [
+    "face_yolov8m.pt",
+    0.35,
+    2.5,
+    1024,
+    1024,
+    "manual",
+    1,
+    1,
+    "gaussian",
+    "per_frame",
+    false,
+    0.28,
+    "largest",
+    "none",
+    0.5
+   ]
+  },
+  {
+   "id": 31,
+   "type": "UNETLoader",
+   "pos": [
+    0,
+    1400
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 18,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      22
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "UNETLoader"
+   },
+   "widgets_values": [
+    "krea2_turbo_fp8_scaled.safetensors",
+    "default"
+   ]
+  },
+  {
+   "id": 32,
+   "type": "LoraLoaderModelOnly",
+   "pos": [
+    0,
+    1530
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 19,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 22
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      27
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "LoraLoaderModelOnly"
+   },
+   "widgets_values": [
+    "Krea2\\krea2_identity_edit_v1_2.safetensors",
+    1.0
+   ]
+  },
+  {
+   "id": 33,
+   "type": "CLIPLoader",
+   "pos": [
+    0,
+    1660
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 20,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "CLIP",
+     "name": "CLIP",
+     "type": "CLIP",
+     "links": [
+      35,
+      39
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "CLIPLoader"
+   },
+   "widgets_values": [
+    "qwen3vl_4b_fp8_scaled.safetensors",
+    "krea2",
+    "default"
+   ]
+  },
+  {
+   "id": 34,
+   "type": "VAELoader",
+   "pos": [
+    0,
+    1790
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 21,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "VAE",
+     "name": "VAE",
+     "type": "VAE",
+     "links": [
+      24,
+      26,
+      30,
+      47
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAELoader"
+   },
+   "widgets_values": [
+    "qwen_image_vae.safetensors"
+   ]
+  },
+  {
+   "id": 35,
+   "type": "VAEEncode",
+   "pos": [
+    800,
+    1400
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 22,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "pixels",
+     "name": "pixels",
+     "type": "IMAGE",
+     "link": 23
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 24
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      28
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEEncode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 36,
+   "type": "VAEEncode",
+   "pos": [
+    800,
+    1500
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 23,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "pixels",
+     "name": "pixels",
+     "type": "IMAGE",
+     "link": 25
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 26
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      29
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEEncode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 37,
+   "type": "EmptySD3LatentImage",
+   "pos": [
+    800,
+    1600
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 24,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      33,
+      45
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "EmptySD3LatentImage"
+   },
+   "widgets_values": [
+    1024,
+    1024,
+    1
+   ]
+  },
+  {
+   "id": 38,
+   "type": "Krea2EditModelPatch",
+   "pos": [
+    800,
+    1750
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 25,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 27
+    },
+    {
+     "localized_name": "source_latent",
+     "name": "source_latent",
+     "type": "LATENT",
+     "link": 28
+    },
+    {
+     "localized_name": "source_latent_b",
+     "name": "source_latent_b",
+     "type": "LATENT",
+     "link": 29
+    },
+    {
+     "localized_name": "ref_boost_mask",
+     "name": "ref_boost_mask",
+     "shape": 7,
+     "type": "MASK",
+     "link": null
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 30
+    },
+    {
+     "localized_name": "source_image",
+     "name": "source_image",
+     "type": "IMAGE",
+     "link": 31
+    },
+    {
+     "localized_name": "source_image_b",
+     "name": "source_image_b",
+     "type": "IMAGE",
+     "link": 32
+    },
+    {
+     "localized_name": "target_latent",
+     "name": "target_latent",
+     "type": "LATENT",
+     "link": 33
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "MODEL",
+     "name": "MODEL",
+     "type": "MODEL",
+     "links": [
+      42
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Krea2EditModelPatch"
+   },
+   "widgets_values": [
+    4.0,
+    1.0,
+    "fit"
+   ]
+  },
+  {
+   "id": 39,
+   "type": "StringConcatenate",
+   "pos": [
+    1150,
+    1400
+   ],
+   "size": [
+    400,
+    200
+   ],
+   "flags": {},
+   "order": 26,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "string_b",
+     "name": "string_b",
+     "type": "STRING",
+     "link": 34,
+     "widget": {
+      "name": "string_b"
+     }
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "STRING",
+     "name": "STRING",
+     "type": "STRING",
+     "links": [
+      36
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "StringConcatenate"
+   },
+   "widgets_values": [
+    "Replace the face of the woman in image 1 with the exact face of the person from image 2. Keep the head angle, hair, clothing, framing and lighting of image 1 unchanged. Photorealistic natural skin texture. Preserve the exact facial identity:",
+    " "
+   ]
+  },
+  {
+   "id": 40,
+   "type": "Krea2EditGroundedEncode",
+   "pos": [
+    1150,
+    1650
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 27,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 35
+    },
+    {
+     "localized_name": "prompt",
+     "name": "prompt",
+     "type": "STRING",
+     "link": 36,
+     "widget": {
+      "name": "prompt"
+     }
+    },
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 37
+    },
+    {
+     "localized_name": "image_b",
+     "name": "image_b",
+     "type": "IMAGE",
+     "link": 38
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      43
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Krea2EditGroundedEncode"
+   },
+   "widgets_values": [
+    1024,
+    ""
+   ]
+  },
+  {
+   "id": 41,
+   "type": "Krea2EditGroundedEncode",
+   "pos": [
+    1150,
+    1900
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 28,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "clip",
+     "name": "clip",
+     "type": "CLIP",
+     "link": 39
+    },
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "link": 40
+    },
+    {
+     "localized_name": "image_b",
+     "name": "image_b",
+     "type": "IMAGE",
+     "link": 41
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "CONDITIONING",
+     "name": "CONDITIONING",
+     "type": "CONDITIONING",
+     "links": [
+      44
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "Krea2EditGroundedEncode"
+   },
+   "widgets_values": [
+    "",
+    1024,
+    ""
+   ],
+   "title": "negative (leave empty)"
+  },
+  {
+   "id": 42,
+   "type": "KSampler",
+   "pos": [
+    1600,
+    1400
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 29,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "model",
+     "name": "model",
+     "type": "MODEL",
+     "link": 42
+    },
+    {
+     "localized_name": "positive",
+     "name": "positive",
+     "type": "CONDITIONING",
+     "link": 43
+    },
+    {
+     "localized_name": "negative",
+     "name": "negative",
+     "type": "CONDITIONING",
+     "link": 44
+    },
+    {
+     "localized_name": "latent_image",
+     "name": "latent_image",
+     "type": "LATENT",
+     "link": 45
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "LATENT",
+     "name": "LATENT",
+     "type": "LATENT",
+     "links": [
+      46
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "KSampler"
+   },
+   "widgets_values": [
+    12345,
+    "fixed",
+    10,
+    1.0,
+    "euler",
+    "simple",
+    1.0
+   ]
+  },
+  {
+   "id": 43,
+   "type": "VAEDecode",
+   "pos": [
+    1600,
+    1800
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 30,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "samples",
+     "name": "samples",
+     "type": "LATENT",
+     "link": 46
+    },
+    {
+     "localized_name": "vae",
+     "name": "vae",
+     "type": "VAE",
+     "link": 47
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "IMAGE",
+     "name": "IMAGE",
+     "type": "IMAGE",
+     "links": [
+      49
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "VAEDecode"
+   },
+   "widgets_values": []
+  },
+  {
+   "id": 44,
+   "type": "H3FaceStitch",
+   "pos": [
+    1950,
+    1400
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 31,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "base_images",
+     "name": "base_images",
+     "type": "IMAGE",
+     "link": 48
+    },
+    {
+     "localized_name": "refined_crops",
+     "name": "refined_crops",
+     "type": "IMAGE",
+     "link": 49
+    },
+    {
+     "localized_name": "transform",
+     "name": "transform",
+     "type": "H3FACEXFORM",
+     "link": 50
+    },
+    {
+     "localized_name": "masks",
+     "name": "masks",
+     "shape": 7,
+     "type": "MASK",
+     "link": null
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": [
+      52
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "H3FaceStitch"
+   },
+   "widgets_values": [
+    "face_ellipse",
+    24,
+    16,
+    1.0,
+    1.0,
+    "composite_anyway",
+    true
+   ]
+  },
+  {
+   "id": 45,
+   "type": "PreviewImage",
+   "pos": [
+    1700,
+    500
+   ],
+   "size": [
+    340,
+    120
+   ],
+   "flags": {},
+   "order": 32,
+   "mode": 0,
+   "inputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "link": 51
+    }
+   ],
+   "outputs": [
+    {
+     "localized_name": "images",
+     "name": "images",
+     "type": "IMAGE",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "PreviewImage"
+   },
+   "widgets_values": [],
+   "title": "Qwen result (before face refine)"
+  }
+ ],
+ "links": [
+  [
+   1,
+   10,
+   0,
+   13,
+   0,
+   "MODEL"
+  ],
+  [
+   2,
+   11,
+   0,
+   14,
+   0,
+   "CLIP"
+  ],
+  [
+   3,
+   1,
+   0,
+   14,
+   2,
+   "IMAGE"
+  ],
+  [
+   4,
+   2,
+   0,
+   14,
+   3,
+   "IMAGE"
+  ],
+  [
+   5,
+   3,
+   0,
+   14,
+   4,
+   "IMAGE"
+  ],
+  [
+   6,
+   12,
+   0,
+   14,
+   6,
+   "VAE"
+  ],
+  [
+   7,
+   13,
+   0,
+   16,
+   0,
+   "MODEL"
+  ],
+  [
+   8,
+   14,
+   0,
+   16,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   9,
+   14,
+   1,
+   16,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   10,
+   15,
+   0,
+   16,
+   3,
+   "LATENT"
+  ],
+  [
+   11,
+   16,
+   0,
+   17,
+   0,
+   "LATENT"
+  ],
+  [
+   12,
+   12,
+   0,
+   17,
+   1,
+   "VAE"
+  ],
+  [
+   15,
+   21,
+   0,
+   15,
+   0,
+   "INT"
+  ],
+  [
+   16,
+   21,
+   1,
+   15,
+   1,
+   "INT"
+  ],
+  [
+   17,
+   22,
+   0,
+   18,
+   1,
+   "STRING"
+  ],
+  [
+   18,
+   23,
+   0,
+   25,
+   0,
+   "STRING"
+  ],
+  [
+   19,
+   24,
+   0,
+   25,
+   1,
+   "STRING"
+  ],
+  [
+   20,
+   25,
+   0,
+   14,
+   1,
+   "STRING"
+  ],
+  [
+   21,
+   17,
+   0,
+   30,
+   0,
+   "IMAGE"
+  ],
+  [
+   22,
+   31,
+   0,
+   32,
+   0,
+   "MODEL"
+  ],
+  [
+   23,
+   30,
+   0,
+   35,
+   0,
+   "IMAGE"
+  ],
+  [
+   24,
+   34,
+   0,
+   35,
+   1,
+   "VAE"
+  ],
+  [
+   25,
+   1,
+   0,
+   36,
+   0,
+   "IMAGE"
+  ],
+  [
+   26,
+   34,
+   0,
+   36,
+   1,
+   "VAE"
+  ],
+  [
+   27,
+   32,
+   0,
+   38,
+   0,
+   "MODEL"
+  ],
+  [
+   28,
+   35,
+   0,
+   38,
+   1,
+   "LATENT"
+  ],
+  [
+   29,
+   36,
+   0,
+   38,
+   2,
+   "LATENT"
+  ],
+  [
+   30,
+   34,
+   0,
+   38,
+   4,
+   "VAE"
+  ],
+  [
+   31,
+   30,
+   0,
+   38,
+   5,
+   "IMAGE"
+  ],
+  [
+   32,
+   1,
+   0,
+   38,
+   6,
+   "IMAGE"
+  ],
+  [
+   33,
+   37,
+   0,
+   38,
+   7,
+   "LATENT"
+  ],
+  [
+   34,
+   24,
+   0,
+   39,
+   0,
+   "STRING"
+  ],
+  [
+   35,
+   33,
+   0,
+   40,
+   0,
+   "CLIP"
+  ],
+  [
+   36,
+   39,
+   0,
+   40,
+   1,
+   "STRING"
+  ],
+  [
+   37,
+   30,
+   0,
+   40,
+   2,
+   "IMAGE"
+  ],
+  [
+   38,
+   1,
+   0,
+   40,
+   3,
+   "IMAGE"
+  ],
+  [
+   39,
+   33,
+   0,
+   41,
+   0,
+   "CLIP"
+  ],
+  [
+   40,
+   30,
+   0,
+   41,
+   1,
+   "IMAGE"
+  ],
+  [
+   41,
+   1,
+   0,
+   41,
+   2,
+   "IMAGE"
+  ],
+  [
+   42,
+   38,
+   0,
+   42,
+   0,
+   "MODEL"
+  ],
+  [
+   43,
+   40,
+   0,
+   42,
+   1,
+   "CONDITIONING"
+  ],
+  [
+   44,
+   41,
+   0,
+   42,
+   2,
+   "CONDITIONING"
+  ],
+  [
+   45,
+   37,
+   0,
+   42,
+   3,
+   "LATENT"
+  ],
+  [
+   46,
+   42,
+   0,
+   43,
+   0,
+   "LATENT"
+  ],
+  [
+   47,
+   34,
+   0,
+   43,
+   1,
+   "VAE"
+  ],
+  [
+   48,
+   17,
+   0,
+   44,
+   0,
+   "IMAGE"
+  ],
+  [
+   49,
+   43,
+   0,
+   44,
+   1,
+   "IMAGE"
+  ],
+  [
+   50,
+   30,
+   1,
+   44,
+   2,
+   "H3FACEXFORM"
+  ],
+  [
+   51,
+   17,
+   0,
+   45,
+   0,
+   "IMAGE"
+  ],
+  [
+   52,
+   44,
+   0,
+   18,
+   0,
+   "IMAGE"
+  ],
+  [
+   53,
+   4,
+   0,
+   14,
+   5,
+   "IMAGE"
+  ]
+ ],
+ "groups": [
+  {
+   "title": "REFERENCES",
+   "bounding": [
+    -20,
+    -60,
+    380,
+    1370
+   ],
+   "color": "#3f789e",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "QWEN-IMAGE-2.1 KEYFRAME",
+   "bounding": [
+    400,
+    -60,
+    1840,
+    900
+   ],
+   "color": "#8a6d3b",
+   "font_size": 24,
+   "flags": {}
+  },
+  {
+   "title": "KREA2 FACE REFINE (crop -> identity edit -> stitch)",
+   "bounding": [
+    -20,
+    1340,
+    2340,
+    820
+   ],
+   "color": "#3b8a55",
+   "font_size": 24,
+   "flags": {}
+  }
+ ],
+ "config": {},
+ "extra": {
+  "ds": {
+   "scale": 0.55,
+   "offset": [
+    80,
+    120
+   ]
+  }
+ },
+ "version": 0.4
+}
