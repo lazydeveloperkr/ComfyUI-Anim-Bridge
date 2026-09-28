@@ -42,8 +42,8 @@ MINIMAX_H3_REFERENCE_IMAGE_CAPACITY = 9
 MINIMAX_H3_REFERENCE_VIDEO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
-# Fixed roles an Anim Image Input can take. Anim assigns one Asset to each role
-# per Sequence, so the set is a closed contract rather than free text.
+# Fixed roles an Anim Image Input can take. Anim assigns one Asset to each
+# generation role, so the set is a closed contract rather than free text.
 # keyframe_reference is an earlier keyframe image of the same Storyboard
 # Sequence, sent when Anim draws the next keyframe of that scene.
 ANIM_IMAGE_INPUT_IDS = (
@@ -51,10 +51,11 @@ ANIM_IMAGE_INPUT_IDS = (
     'outfit',
     'location',
     'keyframe_reference',
+    'image',
 )
-# Fixed roles an Anim Text Input can take: the per-Sequence scene and the
-# per-character appearance that Anim reuses in every Sequence.
-ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance')
+# Fixed roles an Anim Text Input can take: keyframe generation's scene and
+# appearance, plus the direct instruction used by image editing.
+ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance', 'prompt')
 ANIM_QWEN_PROMPT_TEMPLATE = (
     'The character from {character}: {character_appearance}. {scene}'
 )
@@ -73,7 +74,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 7, 'status': 'ok'})
+    return _json({'bridgeVersion': 8, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -445,7 +446,7 @@ class AnimTextInput:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives one text from Anim for a fixed role: scene (per Sequence) '
-        'or character_appearance (per character Asset).'
+        'character_appearance (per character Asset), or prompt (image edit).'
     )
 
     def emit(self, text_id, text):
@@ -589,9 +590,10 @@ class AnimImageInput:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives one Asset image from Anim for a fixed role: character, '
-        'outfit, location, or keyframe_reference (an earlier keyframe of '
-        'the same Storyboard Sequence). Anim matches the Asset to this node by its '
-        'image_id and loads the file from the ComfyUI input folder.'
+        'outfit, location, keyframe_reference (an earlier keyframe of the '
+        'same Storyboard Sequence), or image (the source of an image edit). '
+        'Anim matches the Asset to this node by its image_id and loads the '
+        'file from the ComfyUI input folder.'
     )
 
     @classmethod
@@ -619,6 +621,62 @@ class AnimImageInput:
                 'input folder.'
             )
         return nodes.LoadImage().load_image(file_name)
+
+
+class AnimOptionalImageInput:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'image_id': (['image'], {'default': 'image'}),
+                'image': ('STRING', {'default': ''}),
+            },
+        }
+
+    RETURN_TYPES = ('IMAGE', 'MASK')
+    RETURN_NAMES = ('image', 'mask')
+    FUNCTION = 'load'
+    CATEGORY = 'Anim/Inputs'
+    DESCRIPTION = (
+        'Receives the optional source of an Anim image edit. An empty value '
+        'returns no image so a Krea2 workflow can use its text-only fallback.'
+    )
+
+    @classmethod
+    def IS_CHANGED(cls, image_id, image):
+        return AnimImageInput.IS_CHANGED(image_id, image)
+
+    def load(self, image_id, image):
+        if image_id != 'image':
+            raise ValueError('Anim Optional Image Input only accepts image_id "image".')
+        file_name = str(image or '').strip()
+        if not file_name:
+            return (None, None)
+        return AnimImageInput().load(image_id, file_name)
+
+
+class AnimOptionalVAEEncode:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            'required': {
+                'pixels': ('IMAGE',),
+                'vae': ('VAE',),
+            },
+        }
+
+    RETURN_TYPES = ('LATENT',)
+    FUNCTION = 'encode'
+    CATEGORY = 'Anim/Workflow'
+    DESCRIPTION = (
+        'Encodes an optional image. It returns no latent when an image-edit '
+        'request has no source image.'
+    )
+
+    def encode(self, vae, pixels=None):
+        if pixels is None:
+            return (None,)
+        return nodes.VAEEncode().encode(vae, pixels)
 
 
 class AnimResolutionInput:
@@ -1006,6 +1064,8 @@ NODE_CLASS_MAPPINGS = {
     'AnimTextInput': AnimTextInput,
     'AnimQwenPromptCompose': AnimQwenPromptCompose,
     'AnimImageInput': AnimImageInput,
+    'AnimOptionalImageInput': AnimOptionalImageInput,
+    'AnimOptionalVAEEncode': AnimOptionalVAEEncode,
     'AnimResolutionInput': AnimResolutionInput,
     'AnimImageReferences': AnimImageReferences,
     'AnimVideoReferences': AnimVideoReferences,
@@ -1018,6 +1078,8 @@ NODE_DISPLAY_NAME_MAPPINGS = {
     'AnimTextInput': 'Anim Text Input',
     'AnimQwenPromptCompose': 'Anim Qwen Prompt Compose',
     'AnimImageInput': 'Anim Image Input',
+    'AnimOptionalImageInput': 'Anim Optional Image Input',
+    'AnimOptionalVAEEncode': 'Anim Optional VAE Encode',
     'AnimResolutionInput': 'Anim Resolution Input',
     'AnimImageReferences': 'Anim Image References',
     'AnimVideoReferences': 'Anim Video References',

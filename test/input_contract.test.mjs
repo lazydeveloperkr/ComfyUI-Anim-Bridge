@@ -218,6 +218,21 @@ const qwenGraph = {
     },
   },
 }
+
+const editInputs = explicitAnimInputs({
+  40: {
+    class_type: 'AnimOptionalImageInput',
+    inputs: { image_id: 'image', image: 'keyframe.png' },
+  },
+  41: {
+    class_type: 'AnimTextInput',
+    inputs: { text_id: 'prompt', text: 'Make the sky warmer.' },
+  },
+})
+assert.deepEqual(
+  editInputs.map((input) => [input.slotId, input.inputName]),
+  [['image', 'image'], ['prompt', 'text']],
+)
 assert.deepEqual(explicitAnimInputs(qwenGraph), [
   {
     nodeId: '12',
