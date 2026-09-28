@@ -1,6 +1,6 @@
 {
  "last_node_id": 45,
- "last_link_id": 52,
+ "last_link_id": 53,
  "nodes": [
   {
    "id": 1,
@@ -125,6 +125,46 @@
     "location_club_billiards.webp"
    ],
    "title": "Anim Image Input - location"
+  },
+  {
+   "id": 4,
+   "type": "AnimImageInput",
+   "pos": [
+    0,
+    990
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 3,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      53
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "keyframe_reference",
+    ""
+   ],
+   "title": "Anim Image Input - keyframe_reference"
   },
   {
    "id": 10,
@@ -318,6 +358,13 @@
      "link": 5
     },
     {
+     "localized_name": "image_4",
+     "name": "images.image_4",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 53
+    },
+    {
      "localized_name": "vae",
      "name": "vae",
      "type": "VAE",
@@ -353,7 +400,7 @@
     "Node name for S&R": "TextEncodeQwenImage21"
    },
    "widgets_values": [
-    "<image1> is the character reference: a woman in her twenties. <image2> is an outfit reference sheet: use only the clothes, not the face of the model in it. <image3> is a location sheet. Create a new photo: the adult woman from <image1>, keeping her exact face and hair, wearing the outfit from <image2>, in the location from <image3>. Describe the action, pose, expression, camera angle and lighting here. Photorealistic, 35mm photo, high detail.",
+    "<image1> is the character reference. <image2> is an outfit reference sheet: use only the clothes, not the face of the model in it. <image3> is a location sheet. <image4> is an earlier keyframe of the same scene. Create the next moment of that scene: the character from <image1>, keeping her exact face and hair, wearing the outfit from <image2>, in the location from <image3>, consistent with <image4>. Describe the action, pose, expression, camera angle and lighting here. Photorealistic, 35mm photo, high detail.",
     "",
     1024
    ],
@@ -564,8 +611,8 @@
    "id": 21,
    "type": "AnimResolutionInput",
    "pos": [
-    0,
-    1000
+    420,
+    700
    ],
    "size": [
     300,
@@ -747,7 +794,7 @@
     "Node name for S&R": "AnimQwenPromptCompose"
    },
    "widgets_values": [
-    "The character from {character}: {character_appearance}. {scene}"
+    "The character from {character}: {character_appearance}. Keep the same place, lighting, and outfit as the earlier keyframe {keyframe_reference}. {scene}"
    ],
    "title": "Anim Qwen Prompt Compose"
   },
@@ -1294,6 +1341,7 @@
     "Node name for S&R": "Krea2EditGroundedEncode"
    },
    "widgets_values": [
+    "",
     1024,
     ""
    ]
@@ -1605,7 +1653,7 @@
    12,
    0,
    14,
-   5,
+   6,
    "VAE"
   ],
   [
@@ -1959,6 +2007,14 @@
    18,
    0,
    "IMAGE"
+  ],
+  [
+   53,
+   4,
+   0,
+   14,
+   5,
+   "IMAGE"
   ]
  ],
  "groups": [
@@ -1968,7 +2024,7 @@
     -20,
     -60,
     380,
-    1320
+    1370
    ],
    "color": "#3f789e",
    "font_size": 24,
