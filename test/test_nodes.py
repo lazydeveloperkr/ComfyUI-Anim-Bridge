@@ -520,6 +520,8 @@ class AnimBridgeNodeTest(unittest.TestCase):
             image_id[0],
             [
                 'character',
+                'character_2',
+                'character_3',
                 'outfit',
                 'location',
                 'keyframe_reference',
@@ -704,7 +706,16 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ('She laughs.',),
         )
         text_id = bridge.AnimTextInput.INPUT_TYPES()['required']['text_id']
-        self.assertEqual(text_id[0], ['scene', 'character_appearance', 'prompt'])
+        self.assertEqual(
+            text_id[0],
+            [
+                'scene',
+                'character_appearance',
+                'character_appearance_2',
+                'character_appearance_3',
+                'prompt',
+            ],
+        )
 
     def test_image_edit_roles_are_available(self):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
@@ -794,6 +805,56 @@ class AnimBridgeNodeTest(unittest.TestCase):
             prompt,
             'The character from <image1>: freckles. Keep the place of the '
             'earlier keyframe <image4>. She opens the door.',
+        )
+
+    def test_prompt_compose_names_up_to_three_characters(self):
+        graph = self._qwen_graph()
+        graph['5'] = {
+            'class_type': 'AnimImageInput',
+            'inputs': {'image_id': 'character_2', 'image': 'mina.png'},
+        }
+        graph['6'] = {
+            'class_type': 'AnimImageInput',
+            'inputs': {'image_id': 'character_3', 'image': ''},
+        }
+        graph['14']['inputs']['images.image_5'] = ['5', 0]
+        graph['14']['inputs']['images.image_6'] = ['6', 0]
+        template = (
+            'The character from {character}: {character_appearance}. '
+            'The second character from {character_2}: '
+            '{character_appearance_2}. '
+            'The third character from {character_3}: '
+            '{character_appearance_3}. {scene}'
+        )
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'They hug at the door.',
+            template,
+            'pink hair',
+            'short black hair',
+            'ignored without an image',
+            prompt=graph,
+            unique_id='25',
+        )
+        self.assertEqual(
+            prompt,
+            'The character from <image1>: pink hair. The second character '
+            'from <image5>: short black hair. They hug at the door.',
+        )
+
+    def test_prompt_compose_drops_an_unwired_optional_character(self):
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She waves.',
+            'The character from {character}: {character_appearance}. '
+            'The second character from {character_2}: '
+            '{character_appearance_2}. {scene}',
+            'pink hair',
+            'black hair',
+            prompt=self._qwen_graph(),
+            unique_id='25',
+        )
+        self.assertEqual(
+            prompt,
+            'The character from <image1>: pink hair. She waves.',
         )
 
     def test_prompt_compose_drops_the_empty_appearance_sentence(self):

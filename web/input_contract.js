@@ -32,13 +32,21 @@ function miniMaxH3Capacity(apiGraph, inputNodeId, kind, declaredCapacity) {
 
 export const ANIM_IMAGE_INPUT_IDS = [
   'character',
+  'character_2',
+  'character_3',
   'outfit',
   'location',
   'keyframe_reference',
   'image',
   'reference_image',
 ]
-export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance', 'prompt']
+export const ANIM_TEXT_INPUT_IDS = [
+  'scene',
+  'character_appearance',
+  'character_appearance_2',
+  'character_appearance_3',
+  'prompt',
+]
 
 export function isAnimImageInputClass(classType) {
   return classType === 'AnimImageInput' || classType === 'AnimOptionalImageInput'

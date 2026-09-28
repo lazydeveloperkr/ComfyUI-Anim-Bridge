@@ -1,6 +1,6 @@
 {
  "last_node_id": 45,
- "last_link_id": 53,
+ "last_link_id": 57,
  "nodes": [
   {
    "id": 1,
@@ -363,6 +363,20 @@
      "shape": 7,
      "type": "IMAGE",
      "link": 53
+    },
+    {
+     "localized_name": "image_5",
+     "name": "images.image_5",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 54
+    },
+    {
+     "localized_name": "image_6",
+     "name": "images.image_6",
+     "shape": 7,
+     "type": "IMAGE",
+     "link": 55
     },
     {
      "localized_name": "vae",
@@ -778,6 +792,20 @@
      "shape": 7,
      "type": "STRING",
      "link": 19
+    },
+    {
+     "localized_name": "character_appearance_2",
+     "name": "character_appearance_2",
+     "shape": 7,
+     "type": "STRING",
+     "link": 56
+    },
+    {
+     "localized_name": "character_appearance_3",
+     "name": "character_appearance_3",
+     "shape": 7,
+     "type": "STRING",
+     "link": 57
     }
    ],
    "outputs": [
@@ -794,7 +822,7 @@
     "Node name for S&R": "AnimQwenPromptCompose"
    },
    "widgets_values": [
-    "The character from {character}: {character_appearance}. Keep the same place, lighting, and outfit as the earlier keyframe {keyframe_reference}. {scene}"
+    "The character from {character}: {character_appearance}. The second character from {character_2}: {character_appearance_2}. The third character from {character_3}: {character_appearance_3}. Keep the same place, lighting, and outfit as the earlier keyframe {keyframe_reference}. {scene}"
    ],
    "title": "Anim Qwen Prompt Compose"
   },
@@ -1605,6 +1633,154 @@
    },
    "widgets_values": [],
    "title": "Qwen result (before face refine)"
+  },
+  {
+   "id": 5,
+   "type": "AnimImageInput",
+   "pos": [
+    -340,
+    0
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      54
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "character_2",
+    ""
+   ],
+   "title": "Anim Image Input - character_2"
+  },
+  {
+   "id": 6,
+   "type": "AnimImageInput",
+   "pos": [
+    -340,
+    330
+   ],
+   "size": [
+    300,
+    300
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "image",
+     "name": "image",
+     "type": "IMAGE",
+     "links": [
+      55
+     ]
+    },
+    {
+     "localized_name": "mask",
+     "name": "mask",
+     "type": "MASK",
+     "links": []
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimImageInput"
+   },
+   "widgets_values": [
+    "character_3",
+    ""
+   ],
+   "title": "Anim Image Input - character_3"
+  },
+  {
+   "id": 26,
+   "type": "AnimTextInput",
+   "pos": [
+    -420,
+    -560
+   ],
+   "size": [
+    360,
+    160
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      56
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "character_appearance_2",
+    ""
+   ],
+   "title": "Anim Text Input - character_appearance_2"
+  },
+  {
+   "id": 27,
+   "type": "AnimTextInput",
+   "pos": [
+    -420,
+    -330
+   ],
+   "size": [
+    360,
+    160
+   ],
+   "flags": {},
+   "order": 0,
+   "mode": 0,
+   "inputs": [],
+   "outputs": [
+    {
+     "localized_name": "text",
+     "name": "text",
+     "type": "STRING",
+     "links": [
+      57
+     ]
+    }
+   ],
+   "properties": {
+    "Node name for S&R": "AnimTextInput"
+   },
+   "widgets_values": [
+    "character_appearance_3",
+    ""
+   ],
+   "title": "Anim Text Input - character_appearance_3"
   }
  ],
  "links": [
@@ -1653,7 +1829,7 @@
    12,
    0,
    14,
-   6,
+   8,
    "VAE"
   ],
   [
@@ -2015,15 +2191,47 @@
    14,
    5,
    "IMAGE"
+  ],
+  [
+   54,
+   5,
+   0,
+   14,
+   6,
+   "IMAGE"
+  ],
+  [
+   55,
+   6,
+   0,
+   14,
+   7,
+   "IMAGE"
+  ],
+  [
+   56,
+   26,
+   0,
+   25,
+   2,
+   "STRING"
+  ],
+  [
+   57,
+   27,
+   0,
+   25,
+   3,
+   "STRING"
   ]
  ],
  "groups": [
   {
    "title": "REFERENCES",
    "bounding": [
-    -20,
+    -440,
     -60,
-    380,
+    800,
     1370
    ],
    "color": "#3f789e",

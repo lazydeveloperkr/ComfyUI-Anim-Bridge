@@ -160,9 +160,11 @@ remain separate list entries.
 ### Role image input contract
 
 `Anim Image Input` receives exactly one Asset image for a fixed role. Its
-`image_id` widget is a dropdown with five values only: `character`, `outfit`,
-`location`, `keyframe_reference`, and `image`. Anim assigns one Asset to each
-role and writes the
+`image_id` widget is a dropdown with seven values only: `character`,
+`character_2`, `character_3`, `outfit`, `location`, `keyframe_reference`, and
+`image`. `character_2` and `character_3` are the second and third character
+of a keyframe; like `keyframe_reference` they are optional. Anim assigns one
+Asset to each role and writes the
 uploaded ComfyUI input file name into the node's `image` STRING widget. The
 node shows a preview and an upload button, loads the file like `Load Image`,
 and returns `image` (IMAGE) and `mask` (MASK).
@@ -213,11 +215,13 @@ instead of being resized silently.
 ### Role text input contract
 
 `Anim Text Input` receives one text for a fixed role. Its `text_id` widget is
-a dropdown with three values only:
+a dropdown with five values only:
 
 - `scene`: written per Sequence (action, pose, expression, camera, lighting)
 - `character_appearance`: stored on the character Asset (face traits, hair,
   makeup) and filled by Anim in every Sequence that uses that character
+- `character_appearance_2`, `character_appearance_3`: the same for the second
+  and third character; an empty one drops its sentence from the template
 - `prompt`: the required image-edit instruction, for example “Make the sky
   warmer but keep every person unchanged.”
 
@@ -257,7 +261,8 @@ The character from {character}: {character_appearance}. {scene}
 | `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
 | `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
 | `Anim Image Input` `keyframe_reference` (optional) | `TextEncodeQwenImage21` `images.image_4` |
-| `Anim Text Input` `scene`, `character_appearance` | `Anim Qwen Prompt Compose` |
+| `Anim Image Input` `character_2`, `character_3` (optional) | `TextEncodeQwenImage21` `images.image_5`, `images.image_6` |
+| `Anim Text Input` `scene`, `character_appearance`, `character_appearance_2`, `character_appearance_3` | `Anim Qwen Prompt Compose` |
 | `Anim Qwen Prompt Compose` | `TextEncodeQwenImage21` `prompt` |
 | `Anim Resolution Input` | `Empty Latent Image` `width`, `height` |
 | `Anim Sequence Output` | `Save Image` `filename_prefix` |
