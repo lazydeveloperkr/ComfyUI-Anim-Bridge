@@ -170,8 +170,12 @@ and returns `image` (IMAGE) and `mask` (MASK).
 - Use each role at most once per workflow. When two nodes share an `image_id`,
   the Bridge flags both with `duplicateSlotId: true` and Anim blocks
   generation instead of guessing which one to fill.
-- An empty `image` or a file that is not in the ComfyUI input folder stops
-  the run with a clear error. The Bridge never substitutes a placeholder.
+- An empty `image` outputs no image (`None`): the role was left out of this
+  run. Anim only leaves optional roles empty, such as `keyframe_reference`
+  for the first frame of a scene. `Anim Qwen Prompt Compose` then drops each
+  template sentence that names that role, so the prompt never points at a
+  missing image. A file that is not in the ComfyUI input folder still stops
+  the run with a clear error; the Bridge never substitutes a placeholder.
 - When the `image` output is wired to `TextEncodeQwenImage21`
   `images.image_N`, the Bridge publishes `promptToken: "<imageN>"`. Anim users
   write `{character}`, `{outfit}`, `{location}`, and `{keyframe_reference}`
@@ -182,9 +186,9 @@ and returns `image` (IMAGE) and `mask` (MASK).
 - `keyframe_reference` is an earlier keyframe image of the same Storyboard
   Sequence. Anim sends it only from the Storyboard keyframe generator, when
   **Use the neighboring keyframe** is on, so the new frame keeps the same
-  place, lighting, and outfit. A workflow with this node always needs that
-  image: use it for the keyframes after the first one, and a workflow without
-  it (such as the first-frame workflow) for the first image of a scene.
+  place, lighting, and outfit. It is optional: a frame without a neighbor
+  (the first one of a scene) is sent with it empty, so one keyframe workflow
+  draws every frame.
 - `image` is the single source image for an image-edit workflow. Anim fills it
   with the keyframe being edited. This input is required.
 - `reference_image` is one optional extra identity, person, style, or visual

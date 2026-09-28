@@ -49,5 +49,26 @@ class Krea2ImageEditWorkflowTest(unittest.TestCase):
         self.assertEqual(links[29][1:5], [112, 0, 29, 1])
 
 
+class Krea2GroundedEncodeValuesTest(unittest.TestCase):
+    """Krea2 Edit Grounded Encode keeps three widget values, prompt first,
+    even when its prompt is linked. A missing prompt value shifts
+    grounding_px to '' and ComfyUI fails to read it as an INT."""
+
+    def test_every_grounded_encode_has_an_int_grounding_px(self):
+        folder = pathlib.Path(__file__).parents[1] / 'workflows'
+        checked = 0
+        for path in sorted(folder.glob('*.json')):
+            workflow = json.loads(path.read_text(encoding='utf-8'))
+            for node in workflow.get('nodes', []):
+                if node.get('type') != 'Krea2EditGroundedEncode':
+                    continue
+                values = node['widgets_values']
+                with self.subTest(workflow=path.name, node=node['id']):
+                    self.assertEqual(len(values), 3)
+                    self.assertIsInstance(values[1], int)
+                checked += 1
+        self.assertGreater(checked, 0)
+
+
 if __name__ == '__main__':
     unittest.main()

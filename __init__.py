@@ -477,6 +477,29 @@ def _qwen_image_tokens(graph, encoder_id):
     return tokens
 
 
+def _empty_qwen_roles(graph, encoder_id):
+    """Roles whose Anim Image Input on the Qwen encoder received no image."""
+    empty = set()
+    encoder = graph.get(str(encoder_id)) or {}
+    for input_name, connection in (encoder.get('inputs') or {}).items():
+        if not input_name.startswith('images.image_'):
+            continue
+        if not isinstance(connection, (list, tuple)) or not connection:
+            continue
+        source = graph.get(str(connection[0])) or {}
+        if source.get('class_type') != 'AnimImageInput':
+            continue
+        inputs = source.get('inputs') or {}
+        if not str(inputs.get('image') or '').strip():
+            empty.add(inputs.get('image_id'))
+    return empty
+
+
+def _drop_role_sentences(text, role):
+    """Removes each sentence that points at {role}, with its leading space."""
+    return re.sub(r'[^.]*\{' + re.escape(role) + r'\}[^.]*\.?', '', text)
+
+
 def _downstream_qwen_encoders(graph, node_id):
     return [
         encoder_id
@@ -552,6 +575,15 @@ class AnimQwenPromptCompose:
             if len(encoders) == 1
             else {}
         )
+        empty = (
+            _empty_qwen_roles(graph, encoders[0])
+            if len(encoders) == 1
+            else set()
+        )
+        # A role Anim left empty (such as keyframe_reference for the first
+        # frame of a scene) sends no image, so its sentence is dropped too.
+        for role in empty:
+            text = _drop_role_sentences(text, role)
         for role in ANIM_IMAGE_INPUT_IDS:
             placeholder = '{' + role + '}'
             if placeholder not in text:
@@ -594,7 +626,9 @@ class AnimImageInput:
         'same Storyboard Sequence), or image (the required source of an '
         'image edit). '
         'Anim matches the Asset to this node by its image_id and loads the '
-        'file from the ComfyUI input folder.'
+        'file from the ComfyUI input folder. An empty value outputs no image '
+        '(None), so an optional role such as keyframe_reference can be left '
+        'out; Anim Qwen Prompt Compose then drops the sentence about it.'
     )
 
     @classmethod
@@ -613,9 +647,9 @@ class AnimImageInput:
             )
         file_name = str(image or '').strip()
         if not file_name:
-            raise ValueError(
-                f'Anim sent no {image_id} image to this node.'
-            )
+            # No image for this role in this run, such as keyframe_reference
+            # for the first frame of a scene. Downstream nodes get None.
+            return (None, None)
         if not folder_paths.exists_annotated_filepath(file_name):
             raise ValueError(
                 f'The {image_id} image "{file_name}" is not in the ComfyUI '
