@@ -163,7 +163,8 @@ remain separate list entries.
 `image_id` widget is a dropdown with seven values only: `character`,
 `character_2`, `character_3`, `outfit`, `location`, `keyframe_reference`, and
 `image`. `character_2` and `character_3` are the second and third character
-of a keyframe; like `keyframe_reference` they are optional. Anim assigns one
+of a keyframe; like `outfit` and `keyframe_reference` they are optional
+(a character sheet can already show the clothes). Anim assigns one
 Asset to each role and writes the
 uploaded ComfyUI input file name into the node's `image` STRING widget. The
 node shows a preview and an upload button, loads the file like `Load Image`,
@@ -173,8 +174,8 @@ and returns `image` (IMAGE) and `mask` (MASK).
   the Bridge flags both with `duplicateSlotId: true` and Anim blocks
   generation instead of guessing which one to fill.
 - An empty `image` outputs no image (`None`): the role was left out of this
-  run. Anim only leaves optional roles empty, such as `keyframe_reference`
-  for the first frame of a scene. `Anim Qwen Prompt Compose` then drops each
+  run. Anim only leaves optional roles empty, such as `outfit` or
+  `keyframe_reference` for the first frame of a scene. `Anim Qwen Prompt Compose` then drops each
   template sentence that names that role, so the prompt never points at a
   missing image. A file that is not in the ComfyUI input folder still stops
   the run with a clear error; the Bridge never substitutes a placeholder.
@@ -258,7 +259,7 @@ The character from {character}: {character_appearance}. {scene}
 | Anim node | Connected to |
 | --- | --- |
 | `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
-| `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
+| `Anim Image Input` `outfit` (optional) | `TextEncodeQwenImage21` `images.image_2` |
 | `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
 | `Anim Image Input` `keyframe_reference` (optional) | `TextEncodeQwenImage21` `images.image_4` |
 | `Anim Image Input` `character_2`, `character_3` (optional) | `TextEncodeQwenImage21` `images.image_5`, `images.image_6` |

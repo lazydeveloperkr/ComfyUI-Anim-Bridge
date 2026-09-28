@@ -857,6 +857,28 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'The character from <image1>: pink hair. She waves.',
         )
 
+    def test_prompt_compose_drops_an_empty_or_unwired_outfit(self):
+        template = (
+            'The character from {character}: {character_appearance}. '
+            'Dress them as in {outfit}. {scene}'
+        )
+        graph = self._qwen_graph()
+        graph['2']['inputs']['image'] = ''
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She waves.', template, 'pink hair', prompt=graph, unique_id='25'
+        )
+        self.assertEqual(
+            prompt, 'The character from <image1>: pink hair. She waves.'
+        )
+
+        del graph['14']['inputs']['images.image_3']
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She waves.', template, 'pink hair', prompt=graph, unique_id='25'
+        )
+        self.assertEqual(
+            prompt, 'The character from <image1>: pink hair. She waves.'
+        )
+
     def test_prompt_compose_drops_the_empty_appearance_sentence(self):
         (prompt,) = bridge.AnimQwenPromptCompose().compose(
             'She sits at the bar.',
