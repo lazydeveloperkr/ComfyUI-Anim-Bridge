@@ -3,6 +3,7 @@ import { api } from '../../scripts/api.js'
 import {
   applyInputValues,
   declaredInputs,
+  isAnimImageInputClass,
   queueAndCapturePromptId,
   revisionPayload,
 } from './input_contract.js'
@@ -201,6 +202,8 @@ function setupImageInput(node) {
   })
   const uploadButton = document.createElement('button')
   uploadButton.textContent = 'Upload image'
+  const clearButton = document.createElement('button')
+  clearButton.textContent = 'Clear image'
   const preview = document.createElement('img')
   Object.assign(preview.style, {
     display: 'block',
@@ -218,7 +221,7 @@ function setupImageInput(node) {
   picker.type = 'file'
   picker.accept = 'image/*'
   picker.style.display = 'none'
-  container.append(uploadButton, preview, empty, picker)
+  container.append(uploadButton, clearButton, preview, empty, picker)
 
   const render = () => {
     const fileName = String(imageWidget.value || '').trim()
@@ -237,6 +240,11 @@ function setupImageInput(node) {
     render()
   }
   uploadButton.onclick = () => picker.click()
+  clearButton.onclick = () => {
+    imageWidget.value = ''
+    imageWidget.callback?.('')
+    node.setDirtyCanvas?.(true, true)
+  }
   picker.onchange = async () => {
     const [file] = Array.from(picker.files || [])
     picker.value = ''
@@ -385,7 +393,7 @@ app.registerExtension({
   name: 'Anim.WorkflowBridge',
   nodeCreated(node) {
     if (node.comfyClass === 'AnimImageReferences') setupImageReferenceBoard(node)
-    if (node.comfyClass === 'AnimImageInput') setupImageInput(node)
+    if (isAnimImageInputClass(node.comfyClass)) setupImageInput(node)
   },
   async setup() {
     await publish()

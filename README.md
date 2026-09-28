@@ -186,14 +186,15 @@ and returns `image` (IMAGE) and `mask` (MASK).
   image: use it for the keyframes after the first one, and a workflow without
   it (such as the first-frame workflow) for the first image of a scene.
 - `image` is the single source image for an image-edit workflow. Anim fills it
-  with the keyframe being edited. It is separate from the character, outfit,
-  location, and neighboring-keyframe reference roles.
+  with the keyframe being edited. This input is required.
+- `reference_image` is one optional extra identity, person, style, or visual
+  reference for a two-image edit. It is not the image being edited.
 
 `Anim Optional Image Input` is the narrow exception used by the bundled Krea2
-edit workflow. It only supports the `image` role. When Anim leaves its value
-empty, it returns no IMAGE or MASK instead of a placeholder; the paired
-`Anim Optional VAE Encode` likewise returns no latent. This lets Krea2's own
-text-only fallback run without silently editing an unrelated file.
+edit workflow. It only supports the `reference_image` role. When Anim leaves
+its value empty, it returns no IMAGE or MASK instead of a placeholder; the
+paired `Anim Optional VAE Encode` likewise returns no latent. The required
+source still enters through `Anim Image Input` with the `image` role.
 
 ### Resolution input contract
 
@@ -280,22 +281,23 @@ first-frame workflow. Requires Bridge 7.
 ### Krea2 image-edit workflow
 
 `workflows/krea2_image_edit_anim.json` adapts the upstream Krea2 Identity Edit
-v1.2 workflow for Anim. It exposes only the two content inputs needed by
+v1.2 workflow for Anim. It exposes the three content inputs needed by
 keyframe editing:
 
 | Anim node | Connected to |
 | --- | --- |
-| `Anim Optional Image Input` `image` | Krea2 source VAE, source patch, and grounded encoder |
+| `Anim Image Input` `image` | Required Krea2 source VAE, source patch, and grounded encoder |
+| `Anim Optional Image Input` `reference_image` | Optional second VAE, source patch, and grounded-encoder reference |
 | `Anim Text Input` `prompt` | `Krea2EditGroundedEncode` `prompt` |
 | `Anim Sequence Output` | `Save Image` `filename_prefix` |
 
-The source image is optional in Anim's edit request contract and the prompt is
-required. The optional image node and optional VAE encoder pass no source into
-Krea2 when the field is empty, activating Krea2's text-only fallback. Keyframe
-editing preselects the current keyframe image. The workflow
+The image being edited and the prompt are required. The additional reference
+image is optional; its node and optional VAE encoder pass no second reference
+into Krea2 when empty. Keyframe editing preselects the current keyframe as the
+required source. The workflow
 uses Krea2 Turbo plus the Identity Edit v1.2 LoRA and requires the upstream
 `lbouaraba/comfyui-krea2edit` custom nodes and their documented model files.
-Requires Bridge 8.
+Requires Bridge 9.
 
 ### Video and audio reference array contracts
 

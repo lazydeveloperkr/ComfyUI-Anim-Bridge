@@ -534,9 +534,13 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ('image:kf.png', 'mask:kf.png'),
         )
 
-    def test_optional_image_input_can_be_empty(self):
+    def test_optional_reference_image_input_can_be_empty(self):
+        image_id = bridge.AnimOptionalImageInput.INPUT_TYPES()['required'][
+            'image_id'
+        ]
+        self.assertEqual(image_id[0], ['reference_image'])
         self.assertEqual(
-            bridge.AnimOptionalImageInput().load('image', ''),
+            bridge.AnimOptionalImageInput().load('reference_image', ''),
             (None, None),
         )
         self.assertEqual(
@@ -606,9 +610,9 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_8(self):
+    def test_health_reports_bridge_version_9(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 8)
+        self.assertEqual(payload['bridgeVersion'], 9)
 
     def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
         bridge._sessions.clear()
@@ -702,8 +706,12 @@ class AnimBridgeNodeTest(unittest.TestCase):
 
     def test_image_edit_roles_are_available(self):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
+        optional_image_id = bridge.AnimOptionalImageInput.INPUT_TYPES()[
+            'required'
+        ]['image_id']
         text_id = bridge.AnimTextInput.INPUT_TYPES()['required']['text_id']
         self.assertIn('image', image_id[0])
+        self.assertIn('reference_image', optional_image_id[0])
         self.assertIn('prompt', text_id[0])
 
     def test_text_input_rejects_an_unknown_role(self):

@@ -74,7 +74,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 8, 'status': 'ok'})
+    return _json({'bridgeVersion': 9, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -591,7 +591,8 @@ class AnimImageInput:
     DESCRIPTION = (
         'Receives one Asset image from Anim for a fixed role: character, '
         'outfit, location, keyframe_reference (an earlier keyframe of the '
-        'same Storyboard Sequence), or image (the source of an image edit). '
+        'same Storyboard Sequence), or image (the required source of an '
+        'image edit). '
         'Anim matches the Asset to this node by its image_id and loads the '
         'file from the ComfyUI input folder.'
     )
@@ -628,7 +629,10 @@ class AnimOptionalImageInput:
     def INPUT_TYPES(cls):
         return {
             'required': {
-                'image_id': (['image'], {'default': 'image'}),
+                'image_id': (
+                    ['reference_image'],
+                    {'default': 'reference_image'},
+                ),
                 'image': ('STRING', {'default': ''}),
             },
         }
@@ -638,8 +642,9 @@ class AnimOptionalImageInput:
     FUNCTION = 'load'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
-        'Receives the optional source of an Anim image edit. An empty value '
-        'returns no image so a Krea2 workflow can use its text-only fallback.'
+        'Receives one optional extra reference for an Anim image edit. An '
+        'empty value returns no image; the required image being edited uses '
+        'Anim Image Input instead.'
     )
 
     @classmethod
@@ -647,12 +652,20 @@ class AnimOptionalImageInput:
         return AnimImageInput.IS_CHANGED(image_id, image)
 
     def load(self, image_id, image):
-        if image_id != 'image':
-            raise ValueError('Anim Optional Image Input only accepts image_id "image".')
+        if image_id != 'reference_image':
+            raise ValueError(
+                'Anim Optional Image Input only accepts image_id '
+                '"reference_image".'
+            )
         file_name = str(image or '').strip()
         if not file_name:
             return (None, None)
-        return AnimImageInput().load(image_id, file_name)
+        if not folder_paths.exists_annotated_filepath(file_name):
+            raise ValueError(
+                f'The {image_id} image "{file_name}" is not in the ComfyUI '
+                'input folder.'
+            )
+        return nodes.LoadImage().load_image(file_name)
 
 
 class AnimOptionalVAEEncode:
