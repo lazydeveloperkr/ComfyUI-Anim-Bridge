@@ -24,6 +24,11 @@ class _LoadImage:
         return (f'image:{file_name}', f'mask:{file_name}')
 
 
+class _VAEEncode:
+    def encode(self, vae, pixels):
+        return (f'latent:{vae}:{pixels}',)
+
+
 class _ComfyNode:
     pass
 
@@ -145,6 +150,7 @@ def _load_bridge():
     )
     nodes_module = types.ModuleType('nodes')
     nodes_module.LoadImage = _LoadImage
+    nodes_module.VAEEncode = _VAEEncode
     comfy_api_module = types.ModuleType('comfy_api')
     comfy_api_latest_module = types.ModuleType('comfy_api.latest')
     comfy_api_latest_module.io = types.SimpleNamespace(
@@ -512,7 +518,13 @@ class AnimBridgeNodeTest(unittest.TestCase):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
         self.assertEqual(
             image_id[0],
-            ['character', 'outfit', 'location', 'keyframe_reference'],
+            [
+                'character',
+                'outfit',
+                'location',
+                'keyframe_reference',
+                'image',
+            ],
         )
         self.assertEqual(image_id[1]['default'], 'character')
 
@@ -520,6 +532,20 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertEqual(
             bridge.AnimImageInput().load('keyframe_reference', 'kf.png'),
             ('image:kf.png', 'mask:kf.png'),
+        )
+
+    def test_optional_image_input_can_be_empty(self):
+        self.assertEqual(
+            bridge.AnimOptionalImageInput().load('image', ''),
+            (None, None),
+        )
+        self.assertEqual(
+            bridge.AnimOptionalVAEEncode().encode('vae', None),
+            (None,),
+        )
+        self.assertEqual(
+            bridge.AnimOptionalVAEEncode().encode('vae', 'pixels'),
+            ('latent:vae:pixels',),
         )
 
     def test_image_input_rejects_an_unknown_role(self):
@@ -580,9 +606,9 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_7(self):
+    def test_health_reports_bridge_version_8(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 7)
+        self.assertEqual(payload['bridgeVersion'], 8)
 
     def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
         bridge._sessions.clear()
@@ -672,7 +698,13 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ('She laughs.',),
         )
         text_id = bridge.AnimTextInput.INPUT_TYPES()['required']['text_id']
-        self.assertEqual(text_id[0], ['scene', 'character_appearance'])
+        self.assertEqual(text_id[0], ['scene', 'character_appearance', 'prompt'])
+
+    def test_image_edit_roles_are_available(self):
+        image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
+        text_id = bridge.AnimTextInput.INPUT_TYPES()['required']['text_id']
+        self.assertIn('image', image_id[0])
+        self.assertIn('prompt', text_id[0])
 
     def test_text_input_rejects_an_unknown_role(self):
         with self.assertRaisesRegex(ValueError, 'unknown text_id "style"'):

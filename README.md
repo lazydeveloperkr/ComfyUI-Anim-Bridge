@@ -160,9 +160,9 @@ remain separate list entries.
 ### Role image input contract
 
 `Anim Image Input` receives exactly one Asset image for a fixed role. Its
-`image_id` widget is a dropdown with four values only: `character`, `outfit`,
-`location`, and `keyframe_reference`. Anim assigns one Asset to each role per
-Sequence and writes the
+`image_id` widget is a dropdown with five values only: `character`, `outfit`,
+`location`, `keyframe_reference`, and `image`. Anim assigns one Asset to each
+role and writes the
 uploaded ComfyUI input file name into the node's `image` STRING widget. The
 node shows a preview and an upload button, loads the file like `Load Image`,
 and returns `image` (IMAGE) and `mask` (MASK).
@@ -185,6 +185,15 @@ and returns `image` (IMAGE) and `mask` (MASK).
   place, lighting, and outfit. A workflow with this node always needs that
   image: use it for the keyframes after the first one, and a workflow without
   it (such as the first-frame workflow) for the first image of a scene.
+- `image` is the single source image for an image-edit workflow. Anim fills it
+  with the keyframe being edited. It is separate from the character, outfit,
+  location, and neighboring-keyframe reference roles.
+
+`Anim Optional Image Input` is the narrow exception used by the bundled Krea2
+edit workflow. It only supports the `image` role. When Anim leaves its value
+empty, it returns no IMAGE or MASK instead of a placeholder; the paired
+`Anim Optional VAE Encode` likewise returns no latent. This lets Krea2's own
+text-only fallback run without silently editing an unrelated file.
 
 ### Resolution input contract
 
@@ -198,11 +207,13 @@ instead of being resized silently.
 ### Role text input contract
 
 `Anim Text Input` receives one text for a fixed role. Its `text_id` widget is
-a dropdown with two values only:
+a dropdown with three values only:
 
 - `scene`: written per Sequence (action, pose, expression, camera, lighting)
 - `character_appearance`: stored on the character Asset (face traits, hair,
   makeup) and filled by Anim in every Sequence that uses that character
+- `prompt`: the required image-edit instruction, for example “Make the sky
+  warmer but keep every person unchanged.”
 
 Anim writes the text into the node's `text` STRING widget, and the node
 returns it unchanged. The Bridge publishes `slotId` and `duplicateSlotId` like
@@ -265,6 +276,26 @@ Its `Anim Qwen Prompt Compose` template adds one sentence that points at
 `{keyframe_reference}` and asks for the same place, lighting, and outfit. The
 other nodes, models, and the Krea2 face refine stage are the same as in the
 first-frame workflow. Requires Bridge 7.
+
+### Krea2 image-edit workflow
+
+`workflows/krea2_image_edit_anim.json` adapts the upstream Krea2 Identity Edit
+v1.2 workflow for Anim. It exposes only the two content inputs needed by
+keyframe editing:
+
+| Anim node | Connected to |
+| --- | --- |
+| `Anim Optional Image Input` `image` | Krea2 source VAE, source patch, and grounded encoder |
+| `Anim Text Input` `prompt` | `Krea2EditGroundedEncode` `prompt` |
+| `Anim Sequence Output` | `Save Image` `filename_prefix` |
+
+The source image is optional in Anim's edit request contract and the prompt is
+required. The optional image node and optional VAE encoder pass no source into
+Krea2 when the field is empty, activating Krea2's text-only fallback. Keyframe
+editing preselects the current keyframe image. The workflow
+uses Krea2 Turbo plus the Identity Edit v1.2 LoRA and requires the upstream
+`lbouaraba/comfyui-krea2edit` custom nodes and their documented model files.
+Requires Bridge 8.
 
 ### Video and audio reference array contracts
 

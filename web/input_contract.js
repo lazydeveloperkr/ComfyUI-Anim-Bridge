@@ -30,8 +30,14 @@ function miniMaxH3Capacity(apiGraph, inputNodeId, kind, declaredCapacity) {
   return declaredCapacity
 }
 
-export const ANIM_IMAGE_INPUT_IDS = ['character', 'outfit', 'location', 'keyframe_reference']
-export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance']
+export const ANIM_IMAGE_INPUT_IDS = [
+  'character',
+  'outfit',
+  'location',
+  'keyframe_reference',
+  'image',
+]
+export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance', 'prompt']
 
 // Qwen-Image-2.1 refers to its reference images as <image1>, <image2>, ... in
 // the prompt, numbered by the encoder input the image is wired to.
@@ -92,7 +98,10 @@ export function explicitAnimInputs(apiGraph) {
         capacity: 1,
         encoding: 'scalar',
       })
-    } else if (classType === 'AnimImageInput') {
+    } else if (
+      classType === 'AnimImageInput' ||
+      classType === 'AnimOptionalImageInput'
+    ) {
       const slotId = String(node?.inputs?.image_id || '')
       const input = {
         nodeId,
