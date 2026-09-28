@@ -48,6 +48,8 @@ MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
 # Sequence, sent when Anim draws the next keyframe of that scene.
 ANIM_IMAGE_INPUT_IDS = (
     'character',
+    'character_2',
+    'character_3',
     'outfit',
     'location',
     'keyframe_reference',
@@ -55,11 +57,26 @@ ANIM_IMAGE_INPUT_IDS = (
 )
 # Fixed roles an Anim Text Input can take: keyframe generation's scene and
 # appearance, plus the direct instruction used by image editing.
-ANIM_TEXT_INPUT_IDS = ('scene', 'character_appearance', 'prompt')
+ANIM_TEXT_INPUT_IDS = (
+    'scene',
+    'character_appearance',
+    'character_appearance_2',
+    'character_appearance_3',
+    'prompt',
+)
+# Up to three characters: character (the first), character_2, character_3,
+# each with its own appearance text.
+ANIM_APPEARANCE_IDS = (
+    'character_appearance',
+    'character_appearance_2',
+    'character_appearance_3',
+)
+# Roles a run may leave out; a template sentence about one of them is
+# dropped when it has no image or is not wired to the encoder.
+ANIM_OPTIONAL_IMAGE_IDS = ('character_2', 'character_3', 'keyframe_reference')
 ANIM_QWEN_PROMPT_TEMPLATE = (
     'The character from {character}: {character_appearance}. {scene}'
 )
-_APPEARANCE_SENTENCE = re.compile(r'[^.]*\{character_appearance\}[^.]*\.?\s*')
 # Qwen-Image-2.1 expects latent sizes in multiples of 32.
 ANIM_RESOLUTION_STEP = 32
 ANIM_RESOLUTION_MIN = 256
@@ -530,6 +547,8 @@ class AnimQwenPromptCompose:
             },
             'optional': {
                 'character_appearance': ('STRING', {'forceInput': True}),
+                'character_appearance_2': ('STRING', {'forceInput': True}),
+                'character_appearance_3': ('STRING', {'forceInput': True}),
             },
             'hidden': {
                 'prompt': 'PROMPT',
@@ -543,9 +562,12 @@ class AnimQwenPromptCompose:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Combines the scene and character appearance texts into one '
-        'Qwen-Image-2.1 prompt. {character}, {outfit}, {location}, and '
-        '{keyframe_reference} in the template become the <imageN> token of the matching Anim Image Input '
-        'on the connected Qwen encoder.'
+        'Qwen-Image-2.1 prompt. {character}, {character_2}, {character_3}, '
+        '{outfit}, {location}, and {keyframe_reference} in the template '
+        'become the <imageN> token of the matching Anim Image Input on the '
+        'connected Qwen encoder. A sentence about a second or third '
+        'character, or about the neighboring keyframe, is dropped when that '
+        'image is empty or not wired.'
     )
 
     def compose(
@@ -553,19 +575,26 @@ class AnimQwenPromptCompose:
         scene,
         template,
         character_appearance=None,
+        character_appearance_2=None,
+        character_appearance_3=None,
         prompt=None,
         unique_id=None,
     ):
         scene = str(scene or '').strip()
         if not scene:
             raise ValueError('Anim sent no scene text to compose.')
-        appearance = str(character_appearance or '').strip()
         text = str(template)
-        if appearance:
-            text = text.replace('{character_appearance}', appearance)
-        else:
-            # Drop the whole appearance sentence rather than leaving ": ."
-            text = _APPEARANCE_SENTENCE.sub('', text)
+        appearances = zip(
+            ANIM_APPEARANCE_IDS,
+            (character_appearance, character_appearance_2, character_appearance_3),
+        )
+        for name, value in appearances:
+            appearance = str(value or '').strip()
+            if appearance:
+                text = text.replace('{' + name + '}', appearance)
+            else:
+                # Drop the whole appearance sentence rather than leaving ": ."
+                text = _drop_role_sentences(text, name)
         text = text.replace('{scene}', scene)
 
         graph = prompt if isinstance(prompt, dict) else {}
@@ -584,6 +613,10 @@ class AnimQwenPromptCompose:
         # frame of a scene) sends no image, so its sentence is dropped too.
         for role in empty:
             text = _drop_role_sentences(text, role)
+        # An optional role this workflow does not wire at all is left out too.
+        for role in ANIM_OPTIONAL_IMAGE_IDS:
+            if role not in tokens:
+                text = _drop_role_sentences(text, role)
         for role in ANIM_IMAGE_INPUT_IDS:
             placeholder = '{' + role + '}'
             if placeholder not in text:
