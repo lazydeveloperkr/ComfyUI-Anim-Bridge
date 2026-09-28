@@ -316,6 +316,25 @@ assert.deepEqual(
   qwenRevision,
 )
 
+// An earlier keyframe of the Sequence is a fourth fixed role.
+const keyframeGraph = structuredClone(qwenGraph)
+keyframeGraph[15] = {
+  class_type: 'AnimImageInput',
+  inputs: { image_id: 'keyframe_reference', image: 'kf.webp' },
+}
+keyframeGraph[30].inputs['images.image_4'] = ['15', 0]
+assert.deepEqual(
+  explicitAnimInputs(keyframeGraph)
+    .filter((input) => input.kind === 'image')
+    .map((input) => [input.slotId, input.promptToken]),
+  [
+    ['character', '<image1>'],
+    ['outfit', '<image2>'],
+    ['location', '<image3>'],
+    ['keyframe_reference', '<image4>'],
+  ],
+)
+
 const textGraph = {
   23: { class_type: 'AnimTextInput', inputs: { text_id: 'scene', text: 'She sits.' } },
   24: { class_type: 'AnimTextInput', inputs: { text_id: 'character_appearance', text: 'freckles' } },

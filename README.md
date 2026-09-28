@@ -160,8 +160,9 @@ remain separate list entries.
 ### Role image input contract
 
 `Anim Image Input` receives exactly one Asset image for a fixed role. Its
-`image_id` widget is a dropdown with three values only: `character`, `outfit`,
-and `location`. Anim assigns one Asset to each role per Sequence and writes the
+`image_id` widget is a dropdown with four values only: `character`, `outfit`,
+`location`, and `keyframe_reference`. Anim assigns one Asset to each role per
+Sequence and writes the
 uploaded ComfyUI input file name into the node's `image` STRING widget. The
 node shows a preview and an upload button, loads the file like `Load Image`,
 and returns `image` (IMAGE) and `mask` (MASK).
@@ -173,10 +174,17 @@ and returns `image` (IMAGE) and `mask` (MASK).
   the run with a clear error. The Bridge never substitutes a placeholder.
 - When the `image` output is wired to `TextEncodeQwenImage21`
   `images.image_N`, the Bridge publishes `promptToken: "<imageN>"`. Anim users
-  write `{character}`, `{outfit}`, and `{location}` in the prompt, and Anim
+  write `{character}`, `{outfit}`, `{location}`, and `{keyframe_reference}`
+  in the prompt, and Anim
   replaces each with the token of the matching node, so a prompt does not
   depend on which encoder slot a role is wired to. A role that does not reach
   the encoder has `promptToken: null`.
+- `keyframe_reference` is an earlier keyframe image of the same Storyboard
+  Sequence. Anim sends it only from the Storyboard keyframe generator, when
+  **Use the neighboring keyframe** is on, so the new frame keeps the same
+  place, lighting, and outfit. A workflow with this node always needs that
+  image: use it for the keyframes after the first one, and a workflow without
+  it (such as the first-frame workflow) for the first image of a scene.
 
 ### Resolution input contract
 
@@ -239,6 +247,24 @@ The character from {character}: {character_appearance}. {scene}
 It requires ComfyUI v0.37.0 or later and the `Comfy-Org/Qwen-Image-2.1`
 models `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, and
 `qwen_image_2.1_vae_bf16`.
+
+### Qwen-Image-2.1 keyframe workflow
+
+`workflows/qwen21_keyframe_anim.json` is the first-frame workflow with a
+fourth reference: the neighboring keyframe of the same Sequence. Anim's
+Storyboard keyframe generator uses it to draw the next moment of a scene.
+
+| Anim node | Connected to |
+| --- | --- |
+| `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
+| `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
+| `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
+| `Anim Image Input` `keyframe_reference` | `TextEncodeQwenImage21` `images.image_4` |
+
+Its `Anim Qwen Prompt Compose` template adds one sentence that points at
+`{keyframe_reference}` and asks for the same place, lighting, and outfit. The
+other nodes, models, and the Krea2 face refine stage are the same as in the
+first-frame workflow. Requires Bridge 7.
 
 ### Video and audio reference array contracts
 

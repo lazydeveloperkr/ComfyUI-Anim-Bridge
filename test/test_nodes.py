@@ -510,8 +510,17 @@ class AnimBridgeNodeTest(unittest.TestCase):
 
     def test_image_input_offers_only_the_fixed_roles(self):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
-        self.assertEqual(image_id[0], ['character', 'outfit', 'location'])
+        self.assertEqual(
+            image_id[0],
+            ['character', 'outfit', 'location', 'keyframe_reference'],
+        )
         self.assertEqual(image_id[1]['default'], 'character')
+
+    def test_image_input_loads_a_keyframe_reference(self):
+        self.assertEqual(
+            bridge.AnimImageInput().load('keyframe_reference', 'kf.png'),
+            ('image:kf.png', 'mask:kf.png'),
+        )
 
     def test_image_input_rejects_an_unknown_role(self):
         with self.assertRaisesRegex(ValueError, 'unknown image_id "face"'):
@@ -571,9 +580,9 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_6(self):
+    def test_health_reports_bridge_version_7(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 6)
+        self.assertEqual(payload['bridgeVersion'], 7)
 
     def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
         bridge._sessions.clear()
@@ -691,6 +700,21 @@ class AnimBridgeNodeTest(unittest.TestCase):
             unique_id='25',
         )
         self.assertEqual(prompt, '<image1> wears <image3>. Walks in.')
+
+    def test_prompt_compose_resolves_the_keyframe_reference(self):
+        graph = self._qwen_graph()
+        graph['4'] = {
+            'class_type': 'AnimImageInput',
+            'inputs': {'image_id': 'keyframe_reference', 'image': 'k.png'},
+        }
+        graph['14']['inputs']['images.image_4'] = ['4', 0]
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She opens the door.',
+            'Continue {keyframe_reference}. {scene}',
+            prompt=graph,
+            unique_id='25',
+        )
+        self.assertEqual(prompt, 'Continue <image4>. She opens the door.')
 
     def test_prompt_compose_drops_the_empty_appearance_sentence(self):
         (prompt,) = bridge.AnimQwenPromptCompose().compose(
