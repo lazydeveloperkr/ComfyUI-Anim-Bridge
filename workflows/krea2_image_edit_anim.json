@@ -322,7 +322,7 @@
   },
   {
    "id": 72,
-   "type": "AnimOptionalImageInput",
+   "type": "AnimImageInput",
    "pos": [
     640,
     -160
@@ -353,17 +353,17 @@
     }
    ],
    "properties": {
-    "Node name for S&R": "AnimOptionalImageInput"
+    "Node name for S&R": "AnimImageInput"
    },
    "widgets_values": [
     "image",
     ""
    ],
-   "title": "Anim Optional Image Input - image"
+   "title": "Required image to edit"
   },
   {
    "id": 73,
-   "type": "AnimOptionalVAEEncode",
+   "type": "VAEEncode",
    "pos": [
     1260,
     60
@@ -399,10 +399,12 @@
     }
    ],
    "properties": {
-    "Node name for S&R": "AnimOptionalVAEEncode"
+    "cnr_id": "comfy-core",
+    "ver": "0.26.0",
+    "Node name for S&R": "VAEEncode"
    },
    "widgets_values": [],
-   "title": "Optional source VAE encode"
+   "title": "Required source VAE encode"
   },
   {
    "id": 79,
@@ -690,7 +692,7 @@
   },
   {
    "id": 90,
-   "type": "LoadImage",
+   "type": "AnimOptionalImageInput",
    "pos": [
     640,
     640
@@ -701,11 +703,11 @@
    ],
    "flags": {},
    "order": 6,
-   "mode": 4,
+   "mode": 0,
    "inputs": [],
    "outputs": [
     {
-     "name": "IMAGE",
+     "name": "image",
      "type": "IMAGE",
      "links": [
       17,
@@ -715,24 +717,23 @@
      ]
     },
     {
-     "name": "MASK",
+     "name": "mask",
      "type": "MASK",
      "links": null
     }
    ],
    "properties": {
-    "cnr_id": "comfy-core",
-    "ver": "0.26.0",
-    "Node name for S&R": "LoadImage"
+    "Node name for S&R": "AnimOptionalImageInput"
    },
    "widgets_values": [
-    "example_person.png",
-    "image"
-   ]
+    "reference_image",
+    ""
+   ],
+   "title": "Optional reference image"
   },
   {
    "id": 92,
-   "type": "VAEEncode",
+   "type": "AnimOptionalVAEEncode",
    "pos": [
     1250,
     970
@@ -745,7 +746,7 @@
     "collapsed": true
    },
    "order": 18,
-   "mode": 4,
+   "mode": 0,
    "inputs": [
     {
      "name": "pixels",
@@ -768,11 +769,10 @@
     }
    ],
    "properties": {
-    "cnr_id": "comfy-core",
-    "ver": "0.26.0",
-    "Node name for S&R": "VAEEncode"
+    "Node name for S&R": "AnimOptionalVAEEncode"
    },
-   "widgets_values": []
+   "widgets_values": [],
+   "title": "Optional reference VAE encode"
   },
   {
    "id": 100,
@@ -821,7 +821,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "YOUR IMAGE - the image being edited (your character, the photo to\nrestyle, the scene...).\n\nTwo-image mode (group 2 enabled): THIS slot is always the SCENE\n(image 1). The person always goes in group 2 (image 2).\nInputs around 1MP work best. Two-person images: stay at/below ~1.5MP."
+    "REQUIRED IMAGE TO EDIT - the keyframe or source image whose pixels will be changed. Anim fills this from the selected keyframe. You can upload a different source here when running the workflow directly."
    ],
    "color": "#432",
    "bgcolor": "#653"
@@ -847,7 +847,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "OPTIONAL second reference - the PERSON for insert-into-scene edits\n('place this person at the table').\n\nThis group ships DISABLED (purple = bypassed) - the workflow is a\nplain single-image editor until you need it.\nEnable: right-click this group's title bar -> toggle Bypass off.\nOrder rule: scene = image 1 (group 1), person = image 2 (here)."
+    "OPTIONAL REFERENCE IMAGE - extra identity, person, style, or visual guidance. Leave it empty for ordinary single-image edits. In two-image edits, the required source remains image 1 and this reference is image 2."
    ],
    "color": "#432",
    "bgcolor": "#653"
@@ -951,7 +951,7 @@
     "Node name for S&R": "Note"
    },
    "widgets_values": [
-    "KREA 2 IDENTITY EDIT  -  v1.2 (Fidelity update)\nUse an image like a LoRA: your character/scene goes in as a reference, plain-English\ninstructions do the rest.\n\nQUICK START:  1) load your image in group 1   2) write the instruction in group 3   3) Queue.\nThe Fidelity dial (group 4) ships at 4 = strong likeness. Two-image person-into-scene: enable\ngroup 2 (right-click its title -> toggle Bypass).\n\nRequires the comfyui-krea2edit nodes from this release or newer.\ngithub.com/lbouaraba/comfyui-krea2edit   -   huggingface.co/conradlocke/krea2-identity-edit"
+    "KREA 2 IDENTITY EDIT - v1.2 (Fidelity update)\\n\\nInputs: 1) required image to edit  2) optional extra reference  3) required prompt.\\nThe Fidelity dial ships at 4 = strong likeness.\\n\\nRequires comfyui-krea2edit and the documented model files.\\ngithub.com/lbouaraba/comfyui-krea2edit   -   huggingface.co/conradlocke/krea2-identity-edit"
    ],
    "color": "#232",
    "bgcolor": "#353"

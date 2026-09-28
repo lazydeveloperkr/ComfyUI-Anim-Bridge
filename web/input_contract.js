@@ -36,8 +36,13 @@ export const ANIM_IMAGE_INPUT_IDS = [
   'location',
   'keyframe_reference',
   'image',
+  'reference_image',
 ]
 export const ANIM_TEXT_INPUT_IDS = ['scene', 'character_appearance', 'prompt']
+
+export function isAnimImageInputClass(classType) {
+  return classType === 'AnimImageInput' || classType === 'AnimOptionalImageInput'
+}
 
 // Qwen-Image-2.1 refers to its reference images as <image1>, <image2>, ... in
 // the prompt, numbered by the encoder input the image is wired to.
@@ -98,10 +103,7 @@ export function explicitAnimInputs(apiGraph) {
         capacity: 1,
         encoding: 'scalar',
       })
-    } else if (
-      classType === 'AnimImageInput' ||
-      classType === 'AnimOptionalImageInput'
-    ) {
+    } else if (isAnimImageInputClass(classType)) {
       const slotId = String(node?.inputs?.image_id || '')
       const input = {
         nodeId,

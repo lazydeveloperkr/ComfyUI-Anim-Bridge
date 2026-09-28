@@ -5,12 +5,16 @@ import {
   declaredInputs,
   explicitAnimInputs,
   inferredKind,
+  isAnimImageInputClass,
   revisionPayload,
 } from '../web/input_contract.js'
 
 assert.equal(inferredKind('CLIPTextEncode', 'text'), 'text')
 assert.equal(inferredKind('LoadVideo', 'video'), 'video')
 assert.equal(inferredKind('LoadImage', 'image'), 'image')
+assert.equal(isAnimImageInputClass('AnimImageInput'), true)
+assert.equal(isAnimImageInputClass('AnimOptionalImageInput'), true)
+assert.equal(isAnimImageInputClass('LoadImage'), false)
 
 const graph = {
   1: {
@@ -221,17 +225,25 @@ const qwenGraph = {
 
 const editInputs = explicitAnimInputs({
   40: {
-    class_type: 'AnimOptionalImageInput',
+    class_type: 'AnimImageInput',
     inputs: { image_id: 'image', image: 'keyframe.png' },
   },
   41: {
+    class_type: 'AnimOptionalImageInput',
+    inputs: { image_id: 'reference_image', image: '' },
+  },
+  42: {
     class_type: 'AnimTextInput',
     inputs: { text_id: 'prompt', text: 'Make the sky warmer.' },
   },
 })
 assert.deepEqual(
   editInputs.map((input) => [input.slotId, input.inputName]),
-  [['image', 'image'], ['prompt', 'text']],
+  [
+    ['image', 'image'],
+    ['reference_image', 'image'],
+    ['prompt', 'text'],
+  ],
 )
 assert.deepEqual(explicitAnimInputs(qwenGraph), [
   {
