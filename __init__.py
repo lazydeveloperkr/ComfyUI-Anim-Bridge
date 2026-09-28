@@ -73,7 +73,12 @@ ANIM_APPEARANCE_IDS = (
 )
 # Roles a run may leave out; a template sentence about one of them is
 # dropped when it has no image or is not wired to the encoder.
-ANIM_OPTIONAL_IMAGE_IDS = ('character_2', 'character_3', 'keyframe_reference')
+ANIM_OPTIONAL_IMAGE_IDS = (
+    'character_2',
+    'character_3',
+    'outfit',
+    'keyframe_reference',
+)
 ANIM_QWEN_PROMPT_TEMPLATE = (
     'The character from {character}: {character_appearance}. {scene}'
 )
