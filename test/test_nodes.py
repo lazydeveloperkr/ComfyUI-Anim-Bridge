@@ -556,9 +556,11 @@ class AnimBridgeNodeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'unknown image_id "face"'):
             bridge.AnimImageInput().load('face', 'face.png')
 
-    def test_image_input_rejects_an_empty_image(self):
-        with self.assertRaisesRegex(ValueError, 'no location image'):
-            bridge.AnimImageInput().load('location', '  ')
+    def test_image_input_outputs_no_image_when_empty(self):
+        self.assertEqual(
+            bridge.AnimImageInput().load('keyframe_reference', '  '),
+            (None, None),
+        )
 
     def test_image_input_rejects_a_missing_file(self):
         with self.assertRaisesRegex(ValueError, 'not in the ComfyUI input'):
@@ -755,6 +757,44 @@ class AnimBridgeNodeTest(unittest.TestCase):
             unique_id='25',
         )
         self.assertEqual(prompt, 'Continue <image4>. She opens the door.')
+
+    def test_prompt_compose_drops_the_sentence_of_an_empty_image(self):
+        graph = self._qwen_graph()
+        graph['4'] = {
+            'class_type': 'AnimImageInput',
+            'inputs': {'image_id': 'keyframe_reference', 'image': ''},
+        }
+        graph['14']['inputs']['images.image_4'] = ['4', 0]
+        template = (
+            'The character from {character}: {character_appearance}. '
+            'Keep the place of the earlier keyframe {keyframe_reference}. '
+            '{scene}'
+        )
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She opens the door.',
+            template,
+            'freckles',
+            prompt=graph,
+            unique_id='25',
+        )
+        self.assertEqual(
+            prompt,
+            'The character from <image1>: freckles. She opens the door.',
+        )
+
+        graph['4']['inputs']['image'] = 'kf.png'
+        (prompt,) = bridge.AnimQwenPromptCompose().compose(
+            'She opens the door.',
+            template,
+            'freckles',
+            prompt=graph,
+            unique_id='25',
+        )
+        self.assertEqual(
+            prompt,
+            'The character from <image1>: freckles. Keep the place of the '
+            'earlier keyframe <image4>. She opens the door.',
+        )
 
     def test_prompt_compose_drops_the_empty_appearance_sentence(self):
         (prompt,) = bridge.AnimQwenPromptCompose().compose(
