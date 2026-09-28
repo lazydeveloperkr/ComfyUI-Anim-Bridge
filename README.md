@@ -187,8 +187,9 @@ and returns `image` (IMAGE) and `mask` (MASK).
   Sequence. Anim sends it only from the Storyboard keyframe generator, when
   **Use the neighboring keyframe** is on, so the new frame keeps the same
   place, lighting, and outfit. It is optional: a frame without a neighbor
-  (the first one of a scene) is sent with it empty, so one keyframe workflow
-  draws every frame.
+  (the first one of a scene) is sent with it empty, so
+  `qwen21_firstframe_anim.json` draws every frame, and the Images tab uses the
+  same workflow without it.
 - `image` is the single source image for an image-edit workflow. Anim fills it
   with the keyframe being edited. This input is required.
 - `reference_image` is one optional extra identity, person, style, or visual
@@ -255,6 +256,7 @@ The character from {character}: {character_appearance}. {scene}
 | `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
 | `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
 | `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
+| `Anim Image Input` `keyframe_reference` (optional) | `TextEncodeQwenImage21` `images.image_4` |
 | `Anim Text Input` `scene`, `character_appearance` | `Anim Qwen Prompt Compose` |
 | `Anim Qwen Prompt Compose` | `TextEncodeQwenImage21` `prompt` |
 | `Anim Resolution Input` | `Empty Latent Image` `width`, `height` |
@@ -263,24 +265,6 @@ The character from {character}: {character_appearance}. {scene}
 It requires ComfyUI v0.37.0 or later and the `Comfy-Org/Qwen-Image-2.1`
 models `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, and
 `qwen_image_2.1_vae_bf16`.
-
-### Qwen-Image-2.1 keyframe workflow
-
-`workflows/qwen21_keyframe_anim.json` is the first-frame workflow with a
-fourth reference: the neighboring keyframe of the same Sequence. Anim's
-Storyboard keyframe generator uses it to draw the next moment of a scene.
-
-| Anim node | Connected to |
-| --- | --- |
-| `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
-| `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
-| `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
-| `Anim Image Input` `keyframe_reference` | `TextEncodeQwenImage21` `images.image_4` |
-
-Its `Anim Qwen Prompt Compose` template adds one sentence that points at
-`{keyframe_reference}` and asks for the same place, lighting, and outfit. The
-other nodes, models, and the Krea2 face refine stage are the same as in the
-first-frame workflow. Requires Bridge 7.
 
 ### Krea2 image-edit workflow
 
