@@ -435,3 +435,18 @@ assert.deepEqual(
   )
   assert.equal(fakeApi.queuePrompt, original)
 }
+
+// Krea guided generation uses generic reference IDs; its VAE needs a source.
+{
+  const graph = {
+    1: { class_type: 'AnimImageInput', inputs: { image_id: 'reference_1', image: '' } },
+    2: { class_type: 'AnimOptionalImageInput', inputs: { image_id: 'reference_2', image: '' } },
+    3: { class_type: 'Krea2EditGroundedEncode', inputs: { image: ['1', 0], image_b: ['2', 0] } },
+    4: { class_type: 'VAEEncode', inputs: { pixels: ['1', 0] } },
+  }
+  const inputs = explicitAnimInputs(graph)
+  assert.equal(inputs[0].promptToken, 'reference image 1')
+  assert.equal(inputs[0].required, true)
+  assert.equal(inputs[1].promptToken, 'reference image 2')
+  assert.notEqual(inputs[1].required, true)
+}

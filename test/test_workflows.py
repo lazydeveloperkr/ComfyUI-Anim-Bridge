@@ -72,3 +72,21 @@ class Krea2GroundedEncodeValuesTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+class GenericGenerationWorkflowsTest(unittest.TestCase):
+    def test_four_templates_have_valid_links_and_anim_inputs(self):
+        folder = pathlib.Path(__file__).parents[1] / 'workflows'
+        for model, mode, count in [('qwen21','text2image',0), ('qwen21','image_text2image',8), ('krea2','text2image',0), ('krea2','image_text2image',2)]:
+            with self.subTest(model=model, mode=mode):
+                workflow = json.loads((folder / f'{model}_{mode}_anim.json').read_text())
+                nodes = {n['id']: n for n in workflow['nodes']}
+                images = [n for n in nodes.values() if n['type'] in ['AnimImageInput', 'AnimOptionalImageInput']]
+                self.assertEqual([n['widgets_values'][0] for n in images], [f'reference_{i+1}' for i in range(count)])
+                self.assertTrue(any(n['type']=='AnimTextInput' and n['widgets_values'][0]=='scene' for n in nodes.values()))
+                self.assertTrue(any(n['type']=='AnimResolutionInput' for n in nodes.values()))
+                self.assertTrue(any(n['type']=='AnimSequenceOutput' for n in nodes.values()))
+                for link in workflow['links']:
+                    self.assertIn(link[0], nodes[link[1]]['outputs'][link[2]]['links'])
+                    self.assertEqual(nodes[link[3]]['inputs'][link[4]]['link'], link[0])
+                if mode=='text2image':
+                    self.assertFalse(any(n['type']=='Krea2EditModelPatch' for n in nodes.values()))

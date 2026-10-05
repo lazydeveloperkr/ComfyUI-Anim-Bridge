@@ -57,6 +57,14 @@ export function isAnimImageInputClass(classType) {
 // the prompt, numbered by the encoder input the image is wired to.
 function qwenImagePromptToken(apiGraph, inputNodeId) {
   for (const node of Object.values(apiGraph || {})) {
+    if (node?.class_type === 'Krea2EditGroundedEncode') {
+      for (const [index, name] of ['image', 'image_b'].entries()) {
+        const connection = node?.inputs?.[name]
+        if (Array.isArray(connection) && String(connection[0]) === String(inputNodeId)) {
+          return `reference image ${index + 1}`
+        }
+      }
+    }
     if (String(node?.class_type || '') !== 'TextEncodeQwenImage21') continue
     for (const [inputName, connection] of Object.entries(node?.inputs || {})) {
       const match = /^images\.image_(\d+)$/.exec(inputName)
@@ -123,6 +131,10 @@ export function explicitAnimInputs(apiGraph) {
         encoding: 'scalar',
         slotId,
         promptToken: qwenImagePromptToken(apiGraph, nodeId),
+        ...(Object.values(apiGraph || {}).some(target =>
+          target?.class_type === 'VAEEncode' &&
+          Array.isArray(target?.inputs?.pixels) &&
+          String(target.inputs.pixels[0]) === String(nodeId)) ? { required: true } : {}),
         duplicateSlotId: false,
       }
       addSlotInput(inputsBySlot, classType, input)

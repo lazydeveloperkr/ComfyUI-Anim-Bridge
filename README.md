@@ -345,3 +345,23 @@ encoder image tokens. Categories such as character, wardrobe or background
 are notes for the planner, not runtime slots. Legacy edit nodes remain supported.
 Required models: `qwen_image_2.1_int8_convrot.safetensors`,
 `qwen3vl_8b_int8_convrot.safetensors`, `qwen_image_2.1_vae_bf16.safetensors`.
+
+### Anim generation modes
+
+Open a template in a ComfyUI browser tab with the Bridge enabled. In Anim's
+image generation screen select ComfyUI, reload workflows, and choose its title.
+The list contains workflows shared by open tabs, not every saved file on disk.
+
+| Template | Inputs |
+| --- | --- |
+| `qwen21_text2image_anim.json` | scene text, size, output prefix; no images |
+| `qwen21_image_text2image_anim.json` | scene text and up to eight ordered images |
+| `krea2_text2image_anim.json` | scene text, size, output prefix; no images |
+| `krea2_image_text2image_anim.json` | scene text, required reference_1 and optional reference_2 |
+
+The Krea2 text workflow uses the base Turbo model with eight sampling steps,
+without the identity-edit LoRA. The image-guided workflow uses the same
+`comfyui-krea2edit` extension and identity-edit LoRA as the existing edit template.
+All four expose Anim text, resolution and output inputs. Change the selected
+workflow to change generation mode. Remove references explicitly when switching
+to a text-only workflow; Anim never discards them automatically.
