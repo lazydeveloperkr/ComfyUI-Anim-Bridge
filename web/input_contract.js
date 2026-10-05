@@ -306,3 +306,15 @@ export async function queueAndCapturePromptId(api, queue) {
   if (!promptId) throw new Error('ComfyUI did not queue the workflow.')
   return promptId
 }
+
+// Import through ComfyUI's normal graph loader so it preserves the current tab.
+export async function loadInstalledSample(app, store, command) {
+  const previousPath = store.activeWorkflow?.path
+  const name = `Anim Bridge ${command.commandId.slice(0, 8)} ${command.sampleName}`
+  const loaded = await app.loadGraphData(command.sample, true, true, name)
+  const workflowId = store.activeWorkflow?.path
+  if (loaded === false || !workflowId || workflowId === previousPath) {
+    throw new Error('Could not load the installed sample into a new workflow')
+  }
+  return workflowId
+}

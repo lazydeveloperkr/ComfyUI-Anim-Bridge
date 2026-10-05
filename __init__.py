@@ -1,5 +1,7 @@
 import copy
 import json
+import pathlib
+import hashlib
 import re
 import time
 import uuid
@@ -90,7 +92,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 10, 'status': 'ok'})
+    return _json({'bridgeVersion': 11, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -124,6 +126,7 @@ async def anim_bridge_publish(request):
             'promptId': str(result.get('promptId') or ''),
             'error': str(result.get('error') or ''),
             'at': now,
+            **({'workflowId': str(result['workflowId'])} if result.get('workflowId') else {}),
         }
     for command_id in [
         key
@@ -154,6 +157,57 @@ async def anim_bridge_workflows(_request):
     workflows.sort(key=lambda item: (not item.get('isAvailable', False), item.get('title', '')))
     return _json({'workflows': workflows})
 
+
+
+_SAMPLE_DIRECTORY = pathlib.Path(__file__).resolve().parent / 'workflows'
+_SAMPLE_PREFIX = 'anim-sample/'
+
+
+def _image_samples():
+    samples = {}
+    for path in sorted(_SAMPLE_DIRECTORY.glob('*.json')):
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        # Only image generation samples, not raw examples or video/edit graphs.
+        if any(node.get('type') == 'AnimTextInput' and
+               (node.get('widgets_values') or [None])[0] == 'scene'
+               for node in data.get('nodes', [])):
+            samples[_SAMPLE_PREFIX + path.name] = data
+    return samples
+
+
+@PromptServer.instance.routes.get('/anim_bridge/v1/samples')
+async def anim_bridge_samples(_request):
+    return _json({'workflows': [
+        {'workflowId': sample_id, 'sessionId': 'installed-samples', 'tabId': '',
+         'title': sample_id[len(_SAMPLE_PREFIX):], 'protocolVersion': '2.0',
+         'revision': hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest(),
+         'apiGraph': {}, 'isAvailable': True, 'isActive': False, 'isDirty': False}
+        for sample_id, data in _image_samples().items()
+    ]})
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/load_sample')
+async def anim_bridge_load_sample(request):
+    body = await request.json()
+    sample_id = str(body.get('workflowId') or '')
+    data = _image_samples().get(sample_id)
+    if data is None:
+        return _json({'error': 'Installed image workflow sample was not found'}, 404)
+    live = [(key, session) for key, session in _sessions.items()
+            if time.time() - session['lastSeen'] <= _stale_after_seconds]
+    if not live:
+        return _json({'error': 'Open a ComfyUI browser with Anim Bridge enabled to load this sample'}, 409)
+    (session_id, tab_id), _ = max(live, key=lambda item: item[1]['lastSeen'])
+    command_id = _queue_command(session_id, tab_id, sample_id, 'loadSample')
+    _commands[command_id]['sample'] = copy.deepcopy(data)
+    _commands[command_id]['sample']['id'] = str(uuid.uuid4())
+    _commands[command_id]['sampleName'] = sample_id[len(_SAMPLE_PREFIX):]
+    return _json({'commandId': command_id, 'sessionId': session_id, 'tabId': tab_id}, 202)
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/refresh')
 async def anim_bridge_refresh(request):
@@ -239,6 +293,7 @@ async def anim_bridge_command_result(request):
             'status': 'done',
             'promptId': result['promptId'],
             'error': result['error'],
+            **({'workflowId': result['workflowId']} if result.get('workflowId') else {}),
         }
     )
 

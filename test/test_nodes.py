@@ -615,9 +615,40 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_10(self):
+    def test_installed_samples_are_listed_without_browser(self):
+        payload, status = asyncio.run(bridge.anim_bridge_samples(None))
+        self.assertEqual(status, 200)
+        ids = {item['workflowId'] for item in payload['workflows']}
+        self.assertIn('anim-sample/qwen21_text2image_anim.json', ids)
+        self.assertIn('anim-sample/krea2_image_text2image_anim.json', ids)
+        self.assertNotIn('anim-sample/qwen21_firstframe_3ref.json', ids)
+        self.assertNotIn('anim-sample/krea2_image_edit_anim.json', ids)
+
+    def test_sample_load_requires_browser_and_rejects_arbitrary_paths(self):
+        for sample_id, expected in [('anim-sample/../../__init__.py', 404),
+                                    ('anim-sample/qwen21_text2image_anim.json', 409)]:
+            _, status = asyncio.run(bridge.anim_bridge_load_sample(_JsonRequest({'workflowId': sample_id})))
+            self.assertEqual(status, expected)
+
+    def test_sample_load_queues_new_graph_without_touching_open_workflows(self):
+        bridge._sessions[('s', 't')] = {'lastSeen': bridge.time.time(), 'workflows': [{'workflowId': 'dirty.json', 'isDirty': True}]}
+        payload, status = asyncio.run(bridge.anim_bridge_load_sample(_JsonRequest({'workflowId': 'anim-sample/krea2_text2image_anim.json'})))
+        self.assertEqual(status, 202)
+        command = bridge._commands[payload['commandId']]
+        self.assertEqual(command['type'], 'loadSample')
+        self.assertEqual(command['sampleName'], 'krea2_text2image_anim.json')
+        self.assertTrue(command['sample']['nodes'])
+        self.assertEqual(bridge._sessions[('s', 't')]['workflows'][0]['workflowId'], 'dirty.json')
+        asyncio.run(bridge.anim_bridge_publish(_JsonRequest({
+            'sessionId': 's', 'tabId': 't', 'workflows': [],
+            'commandResult': {'commandId': payload['commandId'], 'workflowId': 'imported.json'},
+        })))
+        result, _ = asyncio.run(bridge.anim_bridge_command_result(types.SimpleNamespace(query={'command_id': payload['commandId']})))
+        self.assertEqual(result['workflowId'], 'imported.json')
+
+    def test_health_reports_bridge_version_11(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 10)
+        self.assertEqual(payload['bridgeVersion'], 11)
 
     def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
         bridge._sessions.clear()

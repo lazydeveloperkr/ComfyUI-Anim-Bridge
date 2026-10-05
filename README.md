@@ -322,7 +322,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 6, "status": "ok"}
+{"bridgeVersion": 11, "status": "ok"}
 ```
 
 ## Update
@@ -348,9 +348,14 @@ Required models: `qwen_image_2.1_int8_convrot.safetensors`,
 
 ### Anim generation modes
 
-Open a template in a ComfyUI browser tab with the Bridge enabled. In Anim's
-image generation screen select ComfyUI, reload workflows, and choose its title.
-The list contains workflows shared by open tabs, not every saved file on disk.
+With Bridge 11, Anim reads image samples directly from this installed custom
+node's `workflows/` folder. Select ComfyUI in Anim, reload the list, and choose an
+installed sample. You do not need to open that sample beforehand. Keep one
+ComfyUI browser with the Bridge enabled open: it imports the sample as a new
+workflow and shares the resulting executable graph. Existing tabs and edits stay
+intact. The picker also includes workflows already open in ComfyUI. Only installed
+image samples with an Anim scene input are cataloged; raw and video examples are
+not image-generation choices.
 
 | Template | Inputs |
 | --- | --- |
@@ -365,3 +370,17 @@ without the identity-edit LoRA. The image-guided workflow uses the same
 All four expose Anim text, resolution and output inputs. Change the selected
 workflow to change generation mode. Remove references explicitly when switching
 to a text-only workflow; Anim never discards them automatically.
+
+
+### Installed sample API (Bridge 11)
+
+- `GET /anim_bridge/v1/samples`: image sample catalog from this extension's local
+  workflows folder, available without browser sessions.
+- `POST /anim_bridge/v1/load_sample` with an allowlisted `workflowId`: queues an
+  import to the most recently active live Bridge browser. It returns command,
+  session and tab IDs. A browser is required for import/execution, not listing.
+- `command_result` returns the imported `workflowId` or a load error. The app
+  waits for its published graph before allowing generation.
+
+Imports use ComfyUI's normal new-workflow loader and fresh graph IDs; original
+sample files and existing browser workflows are not overwritten.
