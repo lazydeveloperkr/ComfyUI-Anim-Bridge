@@ -153,8 +153,13 @@ VAE remains required even without audio references because H3 generates
 audio/video latents together.
 
 The templates use FFN chunk 4 / threshold 4096, standard CLIP offloading,
-and H3 fast VAE spatial tiles of 512 with overlap 128 and CPU image output
-for a 16 GB GPU configuration. Spectrum blend is 0.3 with additional offline
+and the article's stock H3 VAE decode for the primary output. The HiRes
+decoder uses 256-pixel tiles with overlap 64 and CPU image output.
+Ensure your ComfyUI core contains [the official H3 tile-composition fix
+in PR #16436](https://github.com/Comfy-Org/ComfyUI/pull/16436): older raw-neighbour
+blending can produce a grid at tile intersections. Check the implementation
+or commit history rather than relying only on the version label.
+Spectrum blend is 0.3 with additional offline
 replay disabled. Spectrum uses approximate denoising; if motion artifacts
 persist, compare the same seed with only Spectrum bypassed.
 

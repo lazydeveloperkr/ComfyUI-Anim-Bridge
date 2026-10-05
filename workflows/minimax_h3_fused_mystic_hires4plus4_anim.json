@@ -1,5 +1,5 @@
 {
-  "id": "d26ac5ad-6cf5-490e-985d-792ed95d43e2",
+  "id": "4b32dbad-b907-4748-ab07-e574c22e39c0",
   "revision": 0,
   "last_node_id": 111,
   "last_link_id": 53,
@@ -1320,8 +1320,8 @@
       },
       "widgets_values": [
         true,
-        512,
-        128,
+        256,
+        64,
         "cpu"
       ],
       "widgets_values_named": {
@@ -1442,7 +1442,7 @@
     },
     {
       "id": 40,
-      "type": "MiniMaxH3VAEDecodeFast",
+      "type": "VAEDecode",
       "pos": [
         2980,
         80
@@ -1451,7 +1451,9 @@
         390,
         300
       ],
-      "flags": {},
+      "flags": {
+        "collapsed": false
+      },
       "order": 24,
       "mode": 0,
       "inputs": [
@@ -1476,29 +1478,17 @@
         }
       ],
       "properties": {
-        "aux_id": "Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler",
-        "ver": "895e3c471164423f0ea0e8eaf45eb701efe641ae",
-        "Node name for S&R": "MiniMaxH3VAEDecodeFast",
+        "cnr_id": "comfy-core",
+        "ver": "0.31.0",
+        "Node name for S&R": "VAEDecode",
         "ue_properties": {
           "widget_ue_connectable": {},
           "version": "7.8",
           "input_ue_unconnectable": {}
         }
       },
-      "widgets_values": [
-        true,
-        512,
-        128,
-        "cpu"
-      ],
-      "widgets_values_named": {
-        "tiling": true,
-        "tile_size": 256,
-        "tile_overlap": 64,
-        "output_device": "gpu"
-      },
-      "color": "#157926",
-      "bgcolor": "#016512"
+      "widgets_values": [],
+      "title": "VAE Decode - stock H3 decoder with official tile fix"
     },
     {
       "id": 41,
