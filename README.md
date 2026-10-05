@@ -157,51 +157,23 @@ needs the whole list in a single call must implement `INPUT_IS_LIST = True`.
 This is different from an IMAGE batch: references can have different sizes and
 remain separate list entries.
 
-### Role image input contract
+### Ordered reference image inputs
 
-`Anim Image Input` receives exactly one Asset image for a fixed role. Its
-`image_id` widget is a dropdown with seven values only: `character`,
-`character_2`, `character_3`, `outfit`, `location`, `keyframe_reference`, and
-`image`. `character_2` and `character_3` are the second and third character
-of a keyframe; like `keyframe_reference` they are optional. Anim assigns one
-Asset to each role and writes the
-uploaded ComfyUI input file name into the node's `image` STRING widget. The
-node shows a preview and an upload button, loads the file like `Load Image`,
-and returns `image` (IMAGE) and `mask` (MASK).
+Use `Anim Image Input` with `image_id` set to `reference_1` through
+`reference_8` for image generation. Anim fills them in the order chosen by the
+user or agent, regardless of Asset category. Each node receives one uploaded
+ComfyUI filename and outputs IMAGE and MASK. Empty inputs output None and are
+cleared on every run. Missing files raise an error.
 
-- Use each role at most once per workflow. When two nodes share an `image_id`,
-  the Bridge flags both with `duplicateSlotId: true` and Anim blocks
-  generation instead of guessing which one to fill.
-- An empty `image` outputs no image (`None`): the role was left out of this
-  run. Anim only leaves optional roles empty, such as `keyframe_reference`
-  for the first frame of a scene. `Anim Qwen Prompt Compose` then drops each
-  template sentence that names that role, so the prompt never points at a
-  missing image. A file that is not in the ComfyUI input folder still stops
-  the run with a clear error; the Bridge never substitutes a placeholder.
-- When the `image` output is wired to `TextEncodeQwenImage21`
-  `images.image_N`, the Bridge publishes `promptToken: "<imageN>"`. Anim users
-  write `{character}`, `{outfit}`, `{location}`, and `{keyframe_reference}`
-  in the prompt, and Anim
-  replaces each with the token of the matching node, so a prompt does not
-  depend on which encoder slot a role is wired to. A role that does not reach
-  the encoder has `promptToken: null`.
-- `keyframe_reference` is an earlier keyframe image of the same Storyboard
-  Sequence. Anim sends it only from the Storyboard keyframe generator, when
-  **Use the neighboring keyframe** is on, so the new frame keeps the same
-  place, lighting, and outfit. It is optional: a frame without a neighbor
-  (the first one of a scene) is sent with it empty, so
-  `qwen21_firstframe_anim.json` draws every frame, and the Images tab uses the
-  same workflow without it.
-- `image` is the single source image for an image-edit workflow. Anim fills it
-  with the keyframe being edited. This input is required.
-- `reference_image` is one optional extra identity, person, style, or visual
-  reference for a two-image edit. It is not the image being edited.
+Each image ID must be unique across both required and optional image node
+classes. Duplicate IDs block generation. The Bridge reports encoder socket
+positions as `promptToken`; Anim numbers only the filled sockets when composing
+the final prompt, matching Qwen's treatment of empty images.
 
-`Anim Optional Image Input` is the narrow exception used by the bundled Krea2
-edit workflow. It only supports the `reference_image` role. When Anim leaves
-its value empty, it returns no IMAGE or MASK instead of a placeholder; the
-paired `Anim Optional VAE Encode` likewise returns no latent. The required
-source still enters through `Anim Image Input` with the `image` role.
+Legacy semantic image IDs remain accepted for compatibility with edit inputs.
+`image` is the required source of an image edit; `Anim Optional Image Input`
+with `reference_image` remains the optional visual edit reference. These edit
+exceptions do not define the reference list used for new image generation.
 
 ### Resolution input contract
 
@@ -238,7 +210,7 @@ the image input; two text nodes with the same role block generation. Keep
 output to the encoder's `prompt`. The `template` widget defaults to:
 
 ```text
-The character from {character}: {character_appearance}. {scene}
+{scene}
 ```
 
 - `{scene}` and `{character_appearance}` become the received texts.
@@ -250,26 +222,16 @@ The character from {character}: {character_appearance}. {scene}
 - An empty `character_appearance` removes the whole sentence that contains it
   instead of leaving `: .` behind. An empty `scene` stops the run.
 
-### Qwen-Image-2.1 first-frame workflow
+### Qwen-Image-2.1 generation workflow
 
-`workflows/qwen21_firstframe_anim.json` is the Anim-driven version of
-`workflows/qwen21_firstframe_3ref.json`:
-
-| Anim node | Connected to |
-| --- | --- |
-| `Anim Image Input` `character` | `TextEncodeQwenImage21` `images.image_1` |
-| `Anim Image Input` `outfit` | `TextEncodeQwenImage21` `images.image_2` |
-| `Anim Image Input` `location` | `TextEncodeQwenImage21` `images.image_3` |
-| `Anim Image Input` `keyframe_reference` (optional) | `TextEncodeQwenImage21` `images.image_4` |
-| `Anim Image Input` `character_2`, `character_3` (optional) | `TextEncodeQwenImage21` `images.image_5`, `images.image_6` |
-| `Anim Text Input` `scene`, `character_appearance`, `character_appearance_2`, `character_appearance_3` | `Anim Qwen Prompt Compose` |
-| `Anim Qwen Prompt Compose` | `TextEncodeQwenImage21` `prompt` |
-| `Anim Resolution Input` | `Empty Latent Image` `width`, `height` |
-| `Anim Sequence Output` | `Save Image` `filename_prefix` |
+`workflows/qwen21_firstframe_anim.json` runs Qwen-Image-2.1 and saves its output
+directly. It exposes eight generic optional references, a scene prompt, output
+resolution and filename prefix. The compose template is `{scene}`. There is no
+Krea2 or H3 face refinement stage.
 
 It requires ComfyUI v0.37.0 or later and the `Comfy-Org/Qwen-Image-2.1`
 models `qwen_image_2.1_int8_convrot`, `qwen3vl_8b_int8_convrot`, and
-`qwen_image_2.1_vae_bf16`.
+`qwen_image_2.1_vae_bf16`, plus Anim Bridge 10 for ordered reference IDs.
 
 ### Krea2 image-edit workflow
 
@@ -371,3 +333,15 @@ folder, then restart ComfyUI and reload its browser tabs.
 ## License
 
 No open-source license has been granted yet. Copyright (c) LazyDeveloper.
+
+## Ordered Qwen image references (Bridge 10)
+
+`workflows/qwen21_firstframe_anim.json` now generates and saves directly with
+Qwen-Image-2.1. It no longer uses Krea2, H3 face tracking, or face stitching.
+Use `reference_1` through `reference_8` on Anim Image Input nodes, in the order
+chosen in Anim. Empty inputs return no image and are cleared on every run.
+The scene prompt may use `{reference_1}`, etc.; Anim resolves those to the
+encoder image tokens. Categories such as character, wardrobe or background
+are notes for the planner, not runtime slots. Legacy edit nodes remain supported.
+Required models: `qwen_image_2.1_int8_convrot.safetensors`,
+`qwen3vl_8b_int8_convrot.safetensors`, `qwen_image_2.1_vae_bf16.safetensors`.

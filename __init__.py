@@ -42,8 +42,8 @@ MINIMAX_H3_REFERENCE_IMAGE_CAPACITY = 9
 MINIMAX_H3_REFERENCE_VIDEO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
-# Fixed roles an Anim Image Input can take. Anim assigns one Asset to each
-# generation role, so the set is a closed contract rather than free text.
+# Ordered reference inputs for Qwen generation; legacy roles remain readable.
+# These identifiers describe order only, not image semantics.
 # keyframe_reference is an earlier keyframe image of the same Storyboard
 # Sequence, sent when Anim draws the next keyframe of that scene.
 ANIM_IMAGE_INPUT_IDS = (
@@ -54,6 +54,7 @@ ANIM_IMAGE_INPUT_IDS = (
     'location',
     'keyframe_reference',
     'image',
+    *('reference_' + str(index) for index in range(1, 9)),
 )
 # Fixed roles an Anim Text Input can take: keyframe generation's scene and
 # appearance, plus the direct instruction used by image editing.
@@ -74,9 +75,7 @@ ANIM_APPEARANCE_IDS = (
 # Roles a run may leave out; a template sentence about one of them is
 # dropped when it has no image or is not wired to the encoder.
 ANIM_OPTIONAL_IMAGE_IDS = ('character_2', 'character_3', 'keyframe_reference')
-ANIM_QWEN_PROMPT_TEMPLATE = (
-    'The character from {character}: {character_appearance}. {scene}'
-)
+ANIM_QWEN_PROMPT_TEMPLATE = '{scene}'
 # Qwen-Image-2.1 expects latent sizes in multiples of 32.
 ANIM_RESOLUTION_STEP = 32
 ANIM_RESOLUTION_MIN = 256
@@ -91,7 +90,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 9, 'status': 'ok'})
+    return _json({'bridgeVersion': 10, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -491,6 +490,17 @@ def _qwen_image_tokens(graph, encoder_id):
         role = (source.get('inputs') or {}).get('image_id')
         if role in ANIM_IMAGE_INPUT_IDS:
             tokens[role] = f'<image{slot}>'
+    if any(role.startswith('reference_') for role in tokens):
+        active = []
+        for name, connection in (encoder.get('inputs') or {}).items():
+            if not name.startswith('images.image_') or not isinstance(connection, (list, tuple)):
+                continue
+            source = graph.get(str(connection[0])) or {}
+            inputs = source.get('inputs') or {}
+            role = inputs.get('image_id')
+            if role in tokens and str(inputs.get('image') or '').strip():
+                active.append((int(name.rsplit('_', 1)[-1]), role))
+        return {role: f'<image{index + 1}>' for index, (_, role) in enumerate(sorted(active))}
     return tokens
 
 

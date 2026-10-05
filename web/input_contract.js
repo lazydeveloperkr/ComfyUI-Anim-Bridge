@@ -38,6 +38,7 @@ export const ANIM_IMAGE_INPUT_IDS = [
   'location',
   'keyframe_reference',
   'image',
+  ...Array.from({ length: 8 }, (_, index) => `reference_${index + 1}`),
   'reference_image',
 ]
 export const ANIM_TEXT_INPUT_IDS = [
@@ -73,7 +74,7 @@ function qwenImagePromptToken(apiGraph, inputNodeId) {
 
 // Roles are unique per node type: one character image and one scene text.
 function addSlotInput(inputsBySlot, classType, input) {
-  const key = `${classType}\0${input.slotId}`
+  const key = `${isAnimImageInputClass(classType) ? 'image' : classType}\0${input.slotId}`
   const sameSlot = inputsBySlot.get(key) || []
   sameSlot.push(input)
   inputsBySlot.set(key, sameSlot)
