@@ -648,7 +648,7 @@ class AnimImageInput:
             'required': {
                 'image_id': (
                     list(ANIM_IMAGE_INPUT_IDS),
-                    {'default': ANIM_IMAGE_INPUT_IDS[0]},
+                    {'default': 'reference_1'},
                 ),
                 'image': (
                     'STRING',
@@ -664,14 +664,10 @@ class AnimImageInput:
     FUNCTION = 'load'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
-        'Receives one Asset image from Anim for a fixed role: character, '
-        'outfit, location, keyframe_reference (an earlier keyframe of the '
-        'same Storyboard Sequence), or image (the required source of an '
-        'image edit). '
-        'Anim matches the Asset to this node by its image_id and loads the '
-        'file from the ComfyUI input folder. An empty value outputs no image '
-        '(None), so an optional role such as keyframe_reference can be left '
-        'out; Anim Qwen Prompt Compose then drops the sentence about it.'
+        'Receives one ordered reference image from Anim. Choose reference_1, '
+        'reference_2, and so on to match the reference list in Anim. Empty '
+        'inputs output no image. Legacy role IDs remain available for '
+        'existing edit workflows. Files load from the ComfyUI input folder.'
     )
 
     @classmethod

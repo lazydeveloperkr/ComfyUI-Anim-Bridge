@@ -529,7 +529,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
                 *('reference_' + str(index) for index in range(1, 9)),
             ],
         )
-        self.assertEqual(image_id[1]['default'], 'character')
+        self.assertEqual(image_id[1]['default'], 'reference_1')
 
     def test_image_input_loads_a_keyframe_reference(self):
         self.assertEqual(
