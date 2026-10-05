@@ -101,6 +101,76 @@ and 3 standalone audio references and never truncates extras. When connected,
 the Bridge reports those effective capacities to Anim so oversized requests
 are blocked before upload.
 
+### MiniMax H3 Fused Mystic video workflows and dependencies
+
+Two reference-to-video templates adapt the [source article's attached
+Ref2VA workflow](https://note.com/synth_brain/n/naecc37369fde) to Anim inputs:
+
+| Workflow | Sampling | Default output |
+| --- | --- | --- |
+| [`minimax_h3_fused_mystic_fast4_anim.json`](workflows/minimax_h3_fused_mystic_fast4_anim.json) | 4 steps; upscale branch bypassed | 352×608, 24 FPS |
+| [`minimax_h3_fused_mystic_hires4plus4_anim.json`](workflows/minimax_h3_fused_mystic_hires4plus4_anim.json) | 4 steps + learned 2× latent upscale + 4 steps at denoise 0.35 | 704×1216, 24 FPS |
+
+Both use Fused Turbo INT8 with Mystic V2 0.7, 4B ClipProj, Spectrum,
+`res_multistep` / `simple`, and sigma shift 12/3. Do not add another Turbo
+LoRA: the diffusion model already includes Turbo. Duration defaults to 5
+seconds; H3 frame alignment produces 124 frames at that setting. The seed is
+fixed, and no RIFE frame interpolation is used.
+
+#### Dependencies
+
+Use ComfyUI v0.37.2 or later with native MiniMax H3 and INT8 ConvRot support,
+and Anim Bridge 11. Install these custom nodes, then restart ComfyUI and
+reload its frontend:
+
+| Custom nodes | Used by |
+| --- | --- |
+| [ComfyUI-ClipProj](https://github.com/nicolab28/ComfyUI-ClipProj) | `ClipProjApply` |
+| [ComfyUI-Spectrum-MiniMax-H3](https://github.com/xmarre/ComfyUI-Spectrum-MiniMax-H3) | `SpectrumApplyMiniMaxH3` |
+| [ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes) | resolution, math, FFN chunking and SageAttention patch |
+| [ComfyUI-MiniMaxH3_LatentUpscaler](https://github.com/Tr1dae/ComfyUI-MiniMaxH3_LatentUpscaler) | H3 fast VAE decoder, latent upscale and sharpening |
+| [ComfyUI-H3-Latent-Upscaler-Mamad8](https://github.com/mamad8c/ComfyUI-H3-Latent-Upscaler-Mamad8) | learned upscaler architecture dependency |
+
+Both JSON files contain the upscale branch, so install its node packs even
+when using Fast4. Install a [SageAttention](https://github.com/thu-ml/SageAttention)
+build compatible with your PyTorch/CUDA environment for the included `auto`
+attention patch; bypass that patch to use ComfyUI's configured attention
+backend if SageAttention is unavailable. Compilation is disabled.
+
+Download model weights into the following folders relative to `ComfyUI/`:
+
+| Folder | File | Download source |
+| --- | --- | --- |
+| `models/diffusion_models/` | `minimax_h3_fused_refdelta_r1024_turbo8_mystic07_int8_convrot.safetensors` | [MATLOWAI Fused Turbo INT8](https://huggingface.co/MATLOWAI/minimax-h3-fused-turbo-int8-convrot) |
+| `models/text_encoders/` | `qwen3vl_4b_fp8_scaled.safetensors` | [Comfy-Org Krea-2](https://huggingface.co/Comfy-Org/Krea-2) |
+| `models/clip_projections/` | `mmh3-4b-ClipProj-v3.1-mlp.safetensors` | [NicoLab28 ClipProj](https://huggingface.co/NicoLab28/ClipProj-MiniMax-H3) |
+| `models/vae/` | `minimax_h3_video_vae_int8_convrot.safetensors` | [Kijai experimental H3](https://huggingface.co/Kijai/MiniMax-H3-experimental) |
+| `models/vae/` | `minimax_h3_audio_vae_fp32.safetensors` | [Comfy-Org MiniMax H3](https://huggingface.co/Comfy-Org/MiniMax-H3) |
+| `models/h3_latent_upscalers/` | `h3_clean_latent_upscaler_film_epoch200.safetensors` | [Tridae H3LatentUpscaler](https://huggingface.co/Tridae/H3LatentUpscaler) |
+
+The learned upscaler weight is needed when enabling the HiRes branch. Audio
+VAE remains required even without audio references because H3 generates
+audio/video latents together.
+
+The templates use FFN chunk 4 / threshold 4096, standard CLIP offloading,
+and H3 fast VAE spatial tiles of 512 with overlap 128 and CPU image output
+for a 16 GB GPU configuration. Spectrum blend is 0.3 with additional offline
+replay disabled. Spectrum uses approximate denoising; if motion artifacts
+persist, compare the same seed with only Spectrum bypassed.
+
+Open a template manually in ComfyUI and provide images through **Anim Image
+References**, a prompt through **Anim Prompt Input**, and optional audio
+through **Anim Audio References**. Saved prompt and image paths are blank
+so the templates do not depend on another user's local input files. Select
+the open video workflow in Anim; the installed image sample API intentionally
+does not list video templates. **Anim Duration Input** controls clip length,
+and **Anim Sequence Output** supplies the output prefix.
+
+The graphs and dependency selections were checked against a local ComfyUI
+v0.37.2 installation. Video generation was not run, so runtime, peak VRAM,
+and motion quality are not benchmarked; neither template promises a
+particular generation time.
+
 ### Prompt node contract
 
 `Anim Prompt Input` is the recommended prompt contract. Anim recognizes it by
