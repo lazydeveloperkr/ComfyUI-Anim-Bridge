@@ -38,6 +38,7 @@ export const ANIM_IMAGE_INPUT_IDS = [
   'location',
   'keyframe_reference',
   'image',
+  ...Array.from({ length: 8 }, (_, index) => `reference_${index + 1}`),
   'reference_image',
 ]
 export const ANIM_TEXT_INPUT_IDS = [
@@ -56,6 +57,14 @@ export function isAnimImageInputClass(classType) {
 // the prompt, numbered by the encoder input the image is wired to.
 function qwenImagePromptToken(apiGraph, inputNodeId) {
   for (const node of Object.values(apiGraph || {})) {
+    if (node?.class_type === 'Krea2EditGroundedEncode') {
+      for (const [index, name] of ['image', 'image_b'].entries()) {
+        const connection = node?.inputs?.[name]
+        if (Array.isArray(connection) && String(connection[0]) === String(inputNodeId)) {
+          return `reference image ${index + 1}`
+        }
+      }
+    }
     if (String(node?.class_type || '') !== 'TextEncodeQwenImage21') continue
     for (const [inputName, connection] of Object.entries(node?.inputs || {})) {
       const match = /^images\.image_(\d+)$/.exec(inputName)
@@ -73,7 +82,7 @@ function qwenImagePromptToken(apiGraph, inputNodeId) {
 
 // Roles are unique per node type: one character image and one scene text.
 function addSlotInput(inputsBySlot, classType, input) {
-  const key = `${classType}\0${input.slotId}`
+  const key = `${isAnimImageInputClass(classType) ? 'image' : classType}\0${input.slotId}`
   const sameSlot = inputsBySlot.get(key) || []
   sameSlot.push(input)
   inputsBySlot.set(key, sameSlot)
@@ -122,6 +131,10 @@ export function explicitAnimInputs(apiGraph) {
         encoding: 'scalar',
         slotId,
         promptToken: qwenImagePromptToken(apiGraph, nodeId),
+        ...(Object.values(apiGraph || {}).some(target =>
+          target?.class_type === 'VAEEncode' &&
+          Array.isArray(target?.inputs?.pixels) &&
+          String(target.inputs.pixels[0]) === String(nodeId)) ? { required: true } : {}),
         duplicateSlotId: false,
       }
       addSlotInput(inputsBySlot, classType, input)
@@ -292,4 +305,16 @@ export async function queueAndCapturePromptId(api, queue) {
   }
   if (!promptId) throw new Error('ComfyUI did not queue the workflow.')
   return promptId
+}
+
+// Import through ComfyUI's normal graph loader so it preserves the current tab.
+export async function loadInstalledSample(app, store, command) {
+  const previousPath = store.activeWorkflow?.path
+  const name = `Anim Bridge ${command.commandId.slice(0, 8)} ${command.sampleName}`
+  const loaded = await app.loadGraphData(command.sample, true, true, name)
+  const workflowId = store.activeWorkflow?.path
+  if (loaded === false || !workflowId || workflowId === previousPath) {
+    throw new Error('Could not load the installed sample into a new workflow')
+  }
+  return workflowId
 }

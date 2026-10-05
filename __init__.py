@@ -1,5 +1,7 @@
 import copy
 import json
+import pathlib
+import hashlib
 import re
 import time
 import uuid
@@ -42,8 +44,8 @@ MINIMAX_H3_REFERENCE_IMAGE_CAPACITY = 9
 MINIMAX_H3_REFERENCE_VIDEO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_AUDIO_CAPACITY = 3
 MINIMAX_H3_REFERENCE_VIDEO_FPS = 24
-# Fixed roles an Anim Image Input can take. Anim assigns one Asset to each
-# generation role, so the set is a closed contract rather than free text.
+# Ordered reference inputs for Qwen generation; legacy roles remain readable.
+# These identifiers describe order only, not image semantics.
 # keyframe_reference is an earlier keyframe image of the same Storyboard
 # Sequence, sent when Anim draws the next keyframe of that scene.
 ANIM_IMAGE_INPUT_IDS = (
@@ -54,6 +56,7 @@ ANIM_IMAGE_INPUT_IDS = (
     'location',
     'keyframe_reference',
     'image',
+    *('reference_' + str(index) for index in range(1, 9)),
 )
 # Fixed roles an Anim Text Input can take: keyframe generation's scene and
 # appearance, plus the direct instruction used by image editing.
@@ -74,9 +77,7 @@ ANIM_APPEARANCE_IDS = (
 # Roles a run may leave out; a template sentence about one of them is
 # dropped when it has no image or is not wired to the encoder.
 ANIM_OPTIONAL_IMAGE_IDS = ('character_2', 'character_3', 'keyframe_reference')
-ANIM_QWEN_PROMPT_TEMPLATE = (
-    'The character from {character}: {character_appearance}. {scene}'
-)
+ANIM_QWEN_PROMPT_TEMPLATE = '{scene}'
 # Qwen-Image-2.1 expects latent sizes in multiples of 32.
 ANIM_RESOLUTION_STEP = 32
 ANIM_RESOLUTION_MIN = 256
@@ -91,7 +92,7 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 9, 'status': 'ok'})
+    return _json({'bridgeVersion': 11, 'status': 'ok'})
 
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/publish')
@@ -125,6 +126,7 @@ async def anim_bridge_publish(request):
             'promptId': str(result.get('promptId') or ''),
             'error': str(result.get('error') or ''),
             'at': now,
+            **({'workflowId': str(result['workflowId'])} if result.get('workflowId') else {}),
         }
     for command_id in [
         key
@@ -155,6 +157,57 @@ async def anim_bridge_workflows(_request):
     workflows.sort(key=lambda item: (not item.get('isAvailable', False), item.get('title', '')))
     return _json({'workflows': workflows})
 
+
+
+_SAMPLE_DIRECTORY = pathlib.Path(__file__).resolve().parent / 'workflows'
+_SAMPLE_PREFIX = 'anim-sample/'
+
+
+def _image_samples():
+    samples = {}
+    for path in sorted(_SAMPLE_DIRECTORY.glob('*.json')):
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        # Only image generation samples, not raw examples or video/edit graphs.
+        if any(node.get('type') == 'AnimTextInput' and
+               (node.get('widgets_values') or [None])[0] == 'scene'
+               for node in data.get('nodes', [])):
+            samples[_SAMPLE_PREFIX + path.name] = data
+    return samples
+
+
+@PromptServer.instance.routes.get('/anim_bridge/v1/samples')
+async def anim_bridge_samples(_request):
+    return _json({'workflows': [
+        {'workflowId': sample_id, 'sessionId': 'installed-samples', 'tabId': '',
+         'title': sample_id[len(_SAMPLE_PREFIX):], 'protocolVersion': '2.0',
+         'revision': hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest(),
+         'apiGraph': {}, 'isAvailable': True, 'isActive': False, 'isDirty': False}
+        for sample_id, data in _image_samples().items()
+    ]})
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/load_sample')
+async def anim_bridge_load_sample(request):
+    body = await request.json()
+    sample_id = str(body.get('workflowId') or '')
+    data = _image_samples().get(sample_id)
+    if data is None:
+        return _json({'error': 'Installed image workflow sample was not found'}, 404)
+    live = [(key, session) for key, session in _sessions.items()
+            if time.time() - session['lastSeen'] <= _stale_after_seconds]
+    if not live:
+        return _json({'error': 'Open a ComfyUI browser with Anim Bridge enabled to load this sample'}, 409)
+    (session_id, tab_id), _ = max(live, key=lambda item: item[1]['lastSeen'])
+    command_id = _queue_command(session_id, tab_id, sample_id, 'loadSample')
+    _commands[command_id]['sample'] = copy.deepcopy(data)
+    _commands[command_id]['sample']['id'] = str(uuid.uuid4())
+    _commands[command_id]['sampleName'] = sample_id[len(_SAMPLE_PREFIX):]
+    return _json({'commandId': command_id, 'sessionId': session_id, 'tabId': tab_id}, 202)
 
 @PromptServer.instance.routes.post('/anim_bridge/v1/refresh')
 async def anim_bridge_refresh(request):
@@ -240,6 +293,7 @@ async def anim_bridge_command_result(request):
             'status': 'done',
             'promptId': result['promptId'],
             'error': result['error'],
+            **({'workflowId': result['workflowId']} if result.get('workflowId') else {}),
         }
     )
 
@@ -491,6 +545,17 @@ def _qwen_image_tokens(graph, encoder_id):
         role = (source.get('inputs') or {}).get('image_id')
         if role in ANIM_IMAGE_INPUT_IDS:
             tokens[role] = f'<image{slot}>'
+    if any(role.startswith('reference_') for role in tokens):
+        active = []
+        for name, connection in (encoder.get('inputs') or {}).items():
+            if not name.startswith('images.image_') or not isinstance(connection, (list, tuple)):
+                continue
+            source = graph.get(str(connection[0])) or {}
+            inputs = source.get('inputs') or {}
+            role = inputs.get('image_id')
+            if role in tokens and str(inputs.get('image') or '').strip():
+                active.append((int(name.rsplit('_', 1)[-1]), role))
+        return {role: f'<image{index + 1}>' for index, (_, role) in enumerate(sorted(active))}
     return tokens
 
 
@@ -638,7 +703,7 @@ class AnimImageInput:
             'required': {
                 'image_id': (
                     list(ANIM_IMAGE_INPUT_IDS),
-                    {'default': ANIM_IMAGE_INPUT_IDS[0]},
+                    {'default': 'reference_1'},
                 ),
                 'image': (
                     'STRING',
@@ -654,14 +719,10 @@ class AnimImageInput:
     FUNCTION = 'load'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
-        'Receives one Asset image from Anim for a fixed role: character, '
-        'outfit, location, keyframe_reference (an earlier keyframe of the '
-        'same Storyboard Sequence), or image (the required source of an '
-        'image edit). '
-        'Anim matches the Asset to this node by its image_id and loads the '
-        'file from the ComfyUI input folder. An empty value outputs no image '
-        '(None), so an optional role such as keyframe_reference can be left '
-        'out; Anim Qwen Prompt Compose then drops the sentence about it.'
+        'Receives one ordered reference image from Anim. Choose reference_1, '
+        'reference_2, and so on to match the reference list in Anim. Empty '
+        'inputs output no image. Legacy role IDs remain available for '
+        'existing edit workflows. Files load from the ComfyUI input folder.'
     )
 
     @classmethod

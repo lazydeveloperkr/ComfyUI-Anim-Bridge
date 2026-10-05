@@ -4,6 +4,7 @@ import {
   applyInputValues,
   declaredInputs,
   isAnimImageInputClass,
+  loadInstalledSample,
   queueAndCapturePromptId,
   revisionPayload,
 } from './input_contract.js'
@@ -350,6 +351,20 @@ async function runCommands() {
     const payload = await response.json()
     for (const command of payload.commands || []) {
       const store = app.extensionManager.workflow
+      if (command.type === 'loadSample') {
+        let result
+        try {
+          const workflowId = await loadInstalledSample(app, store, command)
+          result = { commandId: command.commandId, workflowId }
+        } catch (error) {
+          result = { commandId: command.commandId, error: String(error) }
+        }
+        while (publishing) await new Promise((resolve) => setTimeout(resolve, 25))
+        completedCommandId = command.commandId
+        commandResult = result
+        await publish()
+        continue
+      }
       const workflow = (store.openWorkflows || []).find((item) => item.path === command.workflowId)
       if (!workflow) continue
       await store.openWorkflow(workflow)

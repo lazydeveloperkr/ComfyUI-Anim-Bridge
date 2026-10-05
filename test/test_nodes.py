@@ -514,7 +514,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ('image:outfit.webp', 'mask:outfit.webp'),
         )
 
-    def test_image_input_offers_only_the_fixed_roles(self):
+    def test_image_input_offers_ordered_references_and_legacy_roles(self):
         image_id = bridge.AnimImageInput.INPUT_TYPES()['required']['image_id']
         self.assertEqual(
             image_id[0],
@@ -526,9 +526,10 @@ class AnimBridgeNodeTest(unittest.TestCase):
                 'location',
                 'keyframe_reference',
                 'image',
+                *('reference_' + str(index) for index in range(1, 9)),
             ],
         )
-        self.assertEqual(image_id[1]['default'], 'character')
+        self.assertEqual(image_id[1]['default'], 'reference_1')
 
     def test_image_input_loads_a_keyframe_reference(self):
         self.assertEqual(
@@ -614,9 +615,40 @@ class AnimBridgeNodeTest(unittest.TestCase):
             'Anim Resolution Input',
         )
 
-    def test_health_reports_bridge_version_9(self):
+    def test_installed_samples_are_listed_without_browser(self):
+        payload, status = asyncio.run(bridge.anim_bridge_samples(None))
+        self.assertEqual(status, 200)
+        ids = {item['workflowId'] for item in payload['workflows']}
+        self.assertIn('anim-sample/qwen21_text2image_anim.json', ids)
+        self.assertIn('anim-sample/krea2_image_text2image_anim.json', ids)
+        self.assertNotIn('anim-sample/qwen21_firstframe_3ref.json', ids)
+        self.assertNotIn('anim-sample/krea2_image_edit_anim.json', ids)
+
+    def test_sample_load_requires_browser_and_rejects_arbitrary_paths(self):
+        for sample_id, expected in [('anim-sample/../../__init__.py', 404),
+                                    ('anim-sample/qwen21_text2image_anim.json', 409)]:
+            _, status = asyncio.run(bridge.anim_bridge_load_sample(_JsonRequest({'workflowId': sample_id})))
+            self.assertEqual(status, expected)
+
+    def test_sample_load_queues_new_graph_without_touching_open_workflows(self):
+        bridge._sessions[('s', 't')] = {'lastSeen': bridge.time.time(), 'workflows': [{'workflowId': 'dirty.json', 'isDirty': True}]}
+        payload, status = asyncio.run(bridge.anim_bridge_load_sample(_JsonRequest({'workflowId': 'anim-sample/krea2_text2image_anim.json'})))
+        self.assertEqual(status, 202)
+        command = bridge._commands[payload['commandId']]
+        self.assertEqual(command['type'], 'loadSample')
+        self.assertEqual(command['sampleName'], 'krea2_text2image_anim.json')
+        self.assertTrue(command['sample']['nodes'])
+        self.assertEqual(bridge._sessions[('s', 't')]['workflows'][0]['workflowId'], 'dirty.json')
+        asyncio.run(bridge.anim_bridge_publish(_JsonRequest({
+            'sessionId': 's', 'tabId': 't', 'workflows': [],
+            'commandResult': {'commandId': payload['commandId'], 'workflowId': 'imported.json'},
+        })))
+        result, _ = asyncio.run(bridge.anim_bridge_command_result(types.SimpleNamespace(query={'command_id': payload['commandId']})))
+        self.assertEqual(result['workflowId'], 'imported.json')
+
+    def test_health_reports_bridge_version_11(self):
         payload, _status = asyncio.run(bridge.anim_bridge_health(None))
-        self.assertEqual(payload['bridgeVersion'], 9)
+        self.assertEqual(payload['bridgeVersion'], 11)
 
     def test_queue_route_runs_the_tab_and_reports_its_prompt_id(self):
         bridge._sessions.clear()
@@ -734,7 +766,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
     def test_prompt_compose_uses_the_character_token_from_the_graph(self):
         (prompt,) = bridge.AnimQwenPromptCompose().compose(
             'She sits at the bar.',
-            bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+            'The character from {character}: {character_appearance}. {scene}',
             'freckles, red braid',
             prompt=self._qwen_graph('images.image_2'),
             unique_id='25',
@@ -860,7 +892,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
     def test_prompt_compose_drops_the_empty_appearance_sentence(self):
         (prompt,) = bridge.AnimQwenPromptCompose().compose(
             'She sits at the bar.',
-            bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+            'The character from {character}: {character_appearance}. {scene}',
             '  ',
             prompt=self._qwen_graph(),
             unique_id='25',
@@ -871,7 +903,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no scene text'):
             bridge.AnimQwenPromptCompose().compose(
                 ' ',
-                bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+                'The character from {character}: {character_appearance}. {scene}',
                 'freckles',
             )
 
@@ -881,7 +913,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'no character Anim Image Input'):
             bridge.AnimQwenPromptCompose().compose(
                 'Walks in.',
-                bridge.ANIM_QWEN_PROMPT_TEMPLATE,
+                'The character from {character}: {character_appearance}. {scene}',
                 'freckles',
                 prompt=graph,
                 unique_id='25',
@@ -896,6 +928,35 @@ class AnimBridgeNodeTest(unittest.TestCase):
             bridge.NODE_DISPLAY_NAME_MAPPINGS['AnimQwenPromptCompose'],
             'Anim Qwen Prompt Compose',
         )
+
+
+    def test_generic_tokens_compact_empty_encoder_inputs(self):
+        graph = {
+            '1': {'class_type': 'AnimImageInput', 'inputs': {'image_id': 'reference_1', 'image': 'first.png'}},
+            '2': {'class_type': 'AnimImageInput', 'inputs': {'image_id': 'reference_2', 'image': ''}},
+            '3': {'class_type': 'AnimImageInput', 'inputs': {'image_id': 'reference_3', 'image': 'third.png'}},
+            '14': {'class_type': 'TextEncodeQwenImage21', 'inputs': {
+                'prompt': ['25', 0], 'images.image_1': ['2', 0],
+                'images.image_2': ['3', 0], 'images.image_3': ['1', 0]}},
+        }
+        result = bridge.AnimQwenPromptCompose().compose(
+            'Use {reference_1} and {reference_3}.', '{scene}',
+            prompt=graph, unique_id='25')
+        self.assertEqual(result, ('Use <image2> and <image1>.',))
+        self.assertEqual(bridge.AnimImageInput().load('reference_8', ''), (None, None))
+
+    def test_qwen_generation_workflow_has_no_face_refinement_and_valid_links(self):
+        workflow = json.loads((pathlib.Path(__file__).parent.parent / 'workflows' / 'qwen21_firstframe_anim.json').read_text())
+        nodes = {node['id']: node for node in workflow['nodes']}
+        refs = [node['widgets_values'][0] for node in nodes.values() if node['type'] == 'AnimImageInput']
+        self.assertEqual(set(refs), {f'reference_{i}' for i in range(1, 9)})
+        self.assertFalse(any('Krea' in node['type'] or 'H3Face' in node['type'] for node in nodes.values()))
+        self.assertEqual(nodes[25]['widgets_values'], ['{scene}'])
+        self.assertEqual(bridge.ANIM_QWEN_PROMPT_TEMPLATE, '{scene}')
+        for link_id, source, source_slot, target, target_slot, _ in workflow['links']:
+            self.assertIn(link_id, nodes[source]['outputs'][source_slot]['links'])
+            self.assertEqual(nodes[target]['inputs'][target_slot]['link'], link_id)
+        self.assertTrue(any(link[1] == 17 and link[3] == 18 and link[4] == 0 for link in workflow['links']))
 
 
 if __name__ == '__main__':

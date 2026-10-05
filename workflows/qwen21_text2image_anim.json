@@ -1,167 +1,7 @@
 {
-  "last_node_id": 58,
-  "last_link_id": 66,
+  "last_node_id": 25,
+  "last_link_id": 58,
   "nodes": [
-    {
-      "id": 1,
-      "type": "AnimImageInput",
-      "pos": [
-        0,
-        0
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            3
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_1",
-        ""
-      ],
-      "title": "Reference 1"
-    },
-    {
-      "id": 2,
-      "type": "AnimImageInput",
-      "pos": [
-        0,
-        330
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 1,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            4
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_2",
-        ""
-      ],
-      "title": "Reference 2"
-    },
-    {
-      "id": 3,
-      "type": "AnimImageInput",
-      "pos": [
-        0,
-        660
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 2,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            5
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_3",
-        ""
-      ],
-      "title": "Reference 3"
-    },
-    {
-      "id": 4,
-      "type": "AnimImageInput",
-      "pos": [
-        0,
-        990
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 3,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            53
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_4",
-        ""
-      ],
-      "title": "Reference 4"
-    },
     {
       "id": 10,
       "type": "UNETLoader",
@@ -337,52 +177,52 @@
           "name": "images.image_1",
           "shape": 7,
           "type": "IMAGE",
-          "link": 3
+          "link": null
         },
         {
           "localized_name": "image_2",
           "name": "images.image_2",
           "shape": 7,
           "type": "IMAGE",
-          "link": 4
+          "link": null
         },
         {
           "localized_name": "image_3",
           "name": "images.image_3",
           "shape": 7,
           "type": "IMAGE",
-          "link": 5
+          "link": null
         },
         {
           "localized_name": "image_4",
           "name": "images.image_4",
           "shape": 7,
           "type": "IMAGE",
-          "link": 53
+          "link": null
         },
         {
           "localized_name": "image_5",
           "name": "images.image_5",
           "shape": 7,
           "type": "IMAGE",
-          "link": 54
+          "link": null
         },
         {
           "localized_name": "image_6",
           "name": "images.image_6",
           "shape": 7,
           "type": "IMAGE",
-          "link": 55
+          "link": null
         },
         {
           "name": "images.image_7",
           "type": "IMAGE",
-          "link": 65
+          "link": null
         },
         {
           "name": "images.image_8",
           "type": "IMAGE",
-          "link": 66
+          "link": null
         },
         {
           "localized_name": "vae",
@@ -774,166 +614,6 @@
         "{scene}"
       ],
       "title": "Prompt"
-    },
-    {
-      "id": 5,
-      "type": "AnimImageInput",
-      "pos": [
-        -340,
-        0
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            54
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_5",
-        ""
-      ],
-      "title": "Reference 5"
-    },
-    {
-      "id": 6,
-      "type": "AnimImageInput",
-      "pos": [
-        -340,
-        330
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            55
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_6",
-        ""
-      ],
-      "title": "Reference 6"
-    },
-    {
-      "id": 57,
-      "type": "AnimImageInput",
-      "pos": [
-        -800,
-        1440
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            65
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_7",
-        ""
-      ],
-      "title": "Reference 7"
-    },
-    {
-      "id": 58,
-      "type": "AnimImageInput",
-      "pos": [
-        -800,
-        1680
-      ],
-      "size": [
-        300,
-        300
-      ],
-      "flags": {},
-      "order": 0,
-      "mode": 0,
-      "inputs": [],
-      "outputs": [
-        {
-          "localized_name": "image",
-          "name": "image",
-          "type": "IMAGE",
-          "links": [
-            66
-          ]
-        },
-        {
-          "localized_name": "mask",
-          "name": "mask",
-          "type": "MASK",
-          "links": []
-        }
-      ],
-      "properties": {
-        "Node name for S&R": "AnimImageInput"
-      },
-      "widgets_values": [
-        "reference_8",
-        ""
-      ],
-      "title": "Reference 8"
     }
   ],
   "links": [
@@ -952,30 +632,6 @@
       14,
       0,
       "CLIP"
-    ],
-    [
-      3,
-      1,
-      0,
-      14,
-      2,
-      "IMAGE"
-    ],
-    [
-      4,
-      2,
-      0,
-      14,
-      3,
-      "IMAGE"
-    ],
-    [
-      5,
-      3,
-      0,
-      14,
-      4,
-      "IMAGE"
     ],
     [
       6,
@@ -1074,51 +730,11 @@
       "STRING"
     ],
     [
-      53,
-      4,
-      0,
-      14,
-      5,
-      "IMAGE"
-    ],
-    [
-      54,
-      5,
-      0,
-      14,
-      6,
-      "IMAGE"
-    ],
-    [
-      55,
-      6,
-      0,
-      14,
-      7,
-      "IMAGE"
-    ],
-    [
       58,
       17,
       0,
       18,
       0,
-      "IMAGE"
-    ],
-    [
-      65,
-      57,
-      0,
-      14,
-      8,
-      "IMAGE"
-    ],
-    [
-      66,
-      58,
-      0,
-      14,
-      9,
       "IMAGE"
     ]
   ],
@@ -1133,5 +749,7 @@
       ]
     }
   },
-  "version": 0.4
+  "version": 0.4,
+  "id": "69ca5dc7-9bed-41f4-9906-956f33675770",
+  "revision": 0
 }
