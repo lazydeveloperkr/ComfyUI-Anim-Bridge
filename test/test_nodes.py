@@ -412,9 +412,30 @@ class AnimBridgeNodeTest(unittest.TestCase):
             ([], ()),
         )
 
-    def test_video_references_still_reject_an_empty_array(self):
-        with self.assertRaisesRegex(ValueError, 'no video references'):
-            bridge.AnimVideoReferences().emit('[]', 3)
+    def test_video_references_accept_an_empty_array(self):
+        self.assertEqual(
+            bridge.AnimVideoReferences().emit('[]', 3),
+            ([], ()),
+        )
+
+    def test_minimax_h3_wrapper_runs_without_video_references(self):
+        _, empty_videos = bridge.AnimVideoReferences().emit('[]', 3)
+
+        result = bridge.AnimMiniMaxH3ReferenceToVideo.execute(
+            clip='clip',
+            vae='video-vae',
+            audio_vae='audio-vae',
+            prompt='prompt',
+            width=1344,
+            height=768,
+            length=124,
+            ref_images=(_ImageTensor('first'),),
+            ref_videos=empty_videos,
+        )
+
+        self.assertEqual(result, ('positive', 'latent'))
+        forwarded = _StockMiniMaxH3ReferenceToVideo.last_execute
+        self.assertIsNone(forwarded['ref_videos'])
 
     def test_minimax_h3_wrapper_runs_without_audio_references(self):
         _, empty_audio = bridge.AnimAudioReferences().emit('[]', 3)

@@ -877,8 +877,8 @@ def _validate_reference_bundle(references, media_label, capacity):
             'References node.'
         )
     if not references:
-        # Anim Audio References sends an empty bundle for a Sequence without
-        # voice or sound references; the stock node treats None as "none".
+        # Anim Video/Audio References send an empty bundle for a Sequence
+        # without such references; the stock node treats None as "none".
         return None
     if len(references) > capacity:
         raise ValueError(
@@ -1158,14 +1158,18 @@ class AnimVideoReferences:
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
         'Receives Asset video file names from Anim in array order. Connect the '
-        'output to the video loader contract used by this workflow.'
+        'output to the video loader contract used by this workflow. A Sequence '
+        'without motion or video references sends an empty array, which yields '
+        'no references instead of an error.'
     )
 
     def emit(self, references_json, max_references):
+        # Most Sequences have no reference video, so video is optional too.
         references = _parse_references(
             references_json,
             max_references,
             media_label='video',
+            allow_empty=True,
         )
         return (references, tuple(references))
 
