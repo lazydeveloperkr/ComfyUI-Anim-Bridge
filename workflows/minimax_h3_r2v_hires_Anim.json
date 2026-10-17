@@ -1,8 +1,8 @@
 {
   "id": "e6d4dc28-7f7a-4914-af4c-fc2aad6f64a8",
   "revision": 0,
-  "last_node_id": 55,
-  "last_link_id": 75,
+  "last_node_id": 57,
+  "last_link_id": 86,
   "nodes": [
     {
       "id": 4,
@@ -38,7 +38,8 @@
           "links": [
             7,
             12,
-            20
+            20,
+            78
           ]
         }
       ],
@@ -357,7 +358,8 @@
           "name": "CLIP",
           "type": "CLIP",
           "links": [
-            10
+            10,
+            76
           ]
         }
       ],
@@ -870,7 +872,7 @@
           "localized_name": "조건",
           "name": "conditioning",
           "type": "CONDITIONING",
-          "link": 40
+          "link": 86
         }
       ],
       "outputs": [
@@ -1016,7 +1018,8 @@
           "type": "INT",
           "links": [
             17,
-            49
+            49,
+            83
           ]
         },
         {
@@ -1759,8 +1762,7 @@
           "name": "positive",
           "type": "CONDITIONING",
           "links": [
-            38,
-            40
+            38
           ]
         },
         {
@@ -1782,15 +1784,16 @@
         1344,
         768,
         124,
-        "match"
+        "max"
       ],
       "widgets_values_named": {
         "prompt": "",
         "width": 1344,
         "height": 768,
         "length": 124,
-        "ref_image_size": "match"
-      }
+        "ref_image_size": "max"
+      },
+      "title": "H3 Ref to Video - 1st pass (refs max)"
     },
     {
       "id": 25,
@@ -2466,7 +2469,8 @@
           "name": "references",
           "type": "ANIM_IMAGE_REFERENCES",
           "links": [
-            13
+            13,
+            79
           ]
         }
       ],
@@ -2517,7 +2521,8 @@
           "name": "prompt",
           "type": "STRING",
           "links": [
-            60
+            60,
+            82
           ]
         }
       ],
@@ -2671,7 +2676,8 @@
           "name": "references",
           "type": "ANIM_AUDIO_REFERENCES",
           "links": [
-            72
+            72,
+            81
           ]
         }
       ],
@@ -2770,7 +2776,8 @@
           "links": [
             5,
             11,
-            34
+            34,
+            77
           ]
         }
       ],
@@ -2967,7 +2974,8 @@
           "name": "references",
           "type": "ANIM_VIDEO_REFERENCES",
           "links": [
-            75
+            75,
+            80
           ]
         }
       ],
@@ -3011,13 +3019,247 @@
         "widget_ue_connectable": {}
       },
       "widgets_values": [
-        "## Hi-res 설정 (RTX 4060 Ti 16GB 기준)\n\n| 위치 | 원본 | 이 버전 |\n|---|---|---|\n| Resolution Selector megapixels (1차 생성) | 0.2 | **0.3** |\n| Latent Upscaler 3D megapixels (2차 패스) | 1.0 | **1.5** |\n| 최종 VAE Decode | 일반 | **Tiled** (512 / 64, 시간 64 / 8) |\n| H3 ref_image_size (레퍼런스 크기) | max | **match** |\n\n9:16 기준 최종 출력: 약 **928 x 1664** (원본 약 768 x 1344)\n\n레퍼런스 이미지는 `max`면 짧은 변 2048px로 매 스텝 계산에 들어가서, 레퍼런스가 많을수록 메모리를 크게 먹어요. `match`는 생성 해상도 크기로 줄여서 넣어요.\n얼굴 유사도가 부족하면 `max`로 되돌리고 레퍼런스 개수를 줄이세요.\n\n**OOM이 나면 이 순서로 낮추기**\n1. Tiled Decode tile_size 512 → 384, temporal_size 64 → 32\n2. Upscaler megapixels 1.5 → 1.2\n3. 1차 megapixels 0.3 → 0.2\n\n시스템 RAM 32GB면 ComfyUI 실행 옵션에 `--disable-pinned-memory` 권장.\n"
+        "## Hi-res 설정 (RTX 4060 Ti 16GB 기준)\n\n| 위치 | 원본 | 이 버전 |\n|---|---|---|\n| Resolution Selector megapixels (1차 생성) | 0.2 | **0.3** |\n| Latent Upscaler 3D megapixels (2차 패스) | 1.0 | **1.5** |\n| 최종 VAE Decode | 일반 | **Tiled** (512 / 64, 시간 64 / 8) |\n| 레퍼런스 크기 (1차 생성) | max | **max (그대로)** |\n| 레퍼런스 크기 (2차 샘플링) | max | **match, 1.5MP 기준** |\n\n9:16 기준 최종 출력: 약 **928 x 1664** (원본 약 768 x 1344)\n\n캐릭터 얼굴과 구도는 1차 생성에서 `max` 레퍼런스(짧은 변 2048px)로 잡아요.\n2차 샘플링은 해상도가 커서 `max` 레퍼런스까지 넣으면 레퍼런스가 많을 때 OOM이 나요. 그래서 2차에는 출력 크기(1.5MP)에 맞춘 `match` 레퍼런스를 따로 넣어요.\n**종횡비를 바꿀 때는 Resolution Selector 두 개를 같이 바꾸세요.** 2차용 megapixels는 업스케일러 값과 맞춰 두세요.\n\n**OOM이 나면 이 순서로 낮추기**\n1. Tiled Decode tile_size 512 → 384, temporal_size 64 → 32\n2. Upscaler megapixels 1.5 → 1.2\n3. 1차 megapixels 0.3 → 0.2\n\n시스템 RAM 32GB면 ComfyUI 실행 옵션에 `--disable-pinned-memory` 권장.\n"
       ],
       "widgets_values_named": {
         "text": "| megapixels | Aspect | Output (multiple=32) |\n|---|---|---|\n| 0.2 | 16:9 | 608 x 352 |\n| 0.3 | 16:9 | 736 x 416 |\n| 0.4 | 16:9 | 864 x 480 |\n| 0.5 | 16:9 | 960 x 544 |\n| 0.6 | 16:9 | 1056 x 608 |\n| 0.7 | 16:9 | 1152 x 640 |\n| 0.8 | 16:9 | 1216 x 672 |\n| 0.9 | 16:9 | 1280 x 736 |\n| 0.98 | 16:9 | 1344 x 768 |\n| 1.0 | 16:9 | 1376 x 768 |\n| 1.2 | 16:9 | 1504 x 832 |\n| 1.5 | 16:9 | 1664 x 928 |\n| 1.8 | 16:9 | 1824 x 1024 |\n| 2.0 | 16:9 | 1920 x 1088 |\n"
       },
       "color": "#222",
       "bgcolor": "#000"
+    },
+    {
+      "id": 56,
+      "type": "ResolutionSelector",
+      "pos": [
+        -292.5079345703125,
+        5595.8583984375
+      ],
+      "size": [
+        270.9833679199219,
+        126
+      ],
+      "flags": {},
+      "order": 14,
+      "mode": 0,
+      "showAdvanced": false,
+      "inputs": [
+        {
+          "label": "aspect_ratio",
+          "localized_name": "종횡비",
+          "name": "aspect_ratio",
+          "type": "COMBO",
+          "widget": {
+            "name": "aspect_ratio"
+          }
+        },
+        {
+          "label": "megapixels",
+          "localized_name": "메가픽셀",
+          "name": "megapixels",
+          "type": "FLOAT",
+          "widget": {
+            "name": "megapixels"
+          }
+        },
+        {
+          "label": "multiple",
+          "localized_name": "배수",
+          "name": "multiple",
+          "type": "INT",
+          "widget": {
+            "name": "multiple"
+          }
+        }
+      ],
+      "outputs": [
+        {
+          "label": "width",
+          "localized_name": "너비",
+          "name": "width",
+          "type": "INT",
+          "links": [
+            84
+          ]
+        },
+        {
+          "label": "height",
+          "localized_name": "높이",
+          "name": "height",
+          "type": "INT",
+          "links": [
+            85
+          ]
+        }
+      ],
+      "title": "Resolution Selector - 2nd pass (match upscaler MP)",
+      "properties": {
+        "cnr_id": "comfy-core",
+        "ver": "0.33.2",
+        "Node name for S&R": "ResolutionSelector",
+        "ue_properties": {
+          "widget_ue_connectable": {},
+          "input_ue_unconnectable": {},
+          "version": "7.8"
+        },
+        "widget_ue_connectable": {}
+      },
+      "widgets_values": [
+        "9:16 (Portrait Widescreen)",
+        1.5,
+        32
+      ],
+      "widgets_values_named": {
+        "aspect_ratio": "9:16 (Portrait Widescreen)",
+        "megapixels": 1.5,
+        "multiple": 32
+      },
+      "color": "#322",
+      "bgcolor": "#533"
+    },
+    {
+      "id": 57,
+      "type": "AnimMiniMaxH3ReferenceToVideo",
+      "pos": [
+        424.6006774902344,
+        5227.72509765625
+      ],
+      "size": [
+        400,
+        304
+      ],
+      "flags": {},
+      "order": 25,
+      "mode": 0,
+      "inputs": [
+        {
+          "localized_name": "clip",
+          "name": "clip",
+          "type": "CLIP",
+          "link": 76
+        },
+        {
+          "localized_name": "vae",
+          "name": "vae",
+          "type": "VAE",
+          "link": 77
+        },
+        {
+          "localized_name": "audio_vae",
+          "name": "audio_vae",
+          "type": "VAE",
+          "link": 78
+        },
+        {
+          "localized_name": "ref_images",
+          "name": "ref_images",
+          "shape": 7,
+          "type": "ANIM_IMAGE_REFERENCES",
+          "link": 79
+        },
+        {
+          "localized_name": "ref_videos",
+          "name": "ref_videos",
+          "shape": 7,
+          "type": "ANIM_VIDEO_REFERENCES",
+          "link": 80
+        },
+        {
+          "label": "ref_video_audio_0",
+          "localized_name": "ref_video_audios.ref_video_audio_0",
+          "name": "ref_video_audios.ref_video_audio_0",
+          "shape": 7,
+          "type": "AUDIO",
+          "link": null
+        },
+        {
+          "localized_name": "ref_audios",
+          "name": "ref_audios",
+          "shape": 7,
+          "type": "ANIM_AUDIO_REFERENCES",
+          "link": 81
+        },
+        {
+          "localized_name": "prompt",
+          "name": "prompt",
+          "type": "STRING",
+          "widget": {
+            "name": "prompt"
+          },
+          "link": 82
+        },
+        {
+          "localized_name": "width",
+          "name": "width",
+          "type": "INT",
+          "widget": {
+            "name": "width"
+          },
+          "link": 84
+        },
+        {
+          "localized_name": "height",
+          "name": "height",
+          "type": "INT",
+          "widget": {
+            "name": "height"
+          },
+          "link": 85
+        },
+        {
+          "localized_name": "length",
+          "name": "length",
+          "type": "INT",
+          "widget": {
+            "name": "length"
+          },
+          "link": 83
+        },
+        {
+          "localized_name": "ref_image_size",
+          "name": "ref_image_size",
+          "type": "COMBO",
+          "widget": {
+            "name": "ref_image_size"
+          },
+          "link": null
+        }
+      ],
+      "outputs": [
+        {
+          "localized_name": "positive",
+          "name": "positive",
+          "type": "CONDITIONING",
+          "links": [
+            86
+          ]
+        },
+        {
+          "localized_name": "잠재 데이터",
+          "name": "LATENT",
+          "type": "LATENT",
+          "links": []
+        }
+      ],
+      "properties": {
+        "aux_id": "lazydeveloperkr/ComfyUI-Anim-Bridge",
+        "ver": "7606afa08bc96548e3facc73887de31c79c084ff",
+        "Node name for S&R": "AnimMiniMaxH3ReferenceToVideo"
+      },
+      "widgets_values": [
+        "",
+        1344,
+        768,
+        124,
+        "match"
+      ],
+      "widgets_values_named": {
+        "prompt": "",
+        "width": 1344,
+        "height": 768,
+        "length": 124,
+        "ref_image_size": "match"
+      },
+      "title": "H3 Ref to Video - 2nd pass conditioning (refs match)"
     }
   ],
   "links": [
@@ -3262,14 +3504,6 @@
       "MODEL"
     ],
     [
-      40,
-      11,
-      0,
-      32,
-      1,
-      "CONDITIONING"
-    ],
-    [
       43,
       21,
       1,
@@ -3444,6 +3678,94 @@
       11,
       4,
       "ANIM_VIDEO_REFERENCES"
+    ],
+    [
+      76,
+      15,
+      0,
+      57,
+      0,
+      "CLIP"
+    ],
+    [
+      77,
+      3,
+      0,
+      57,
+      1,
+      "VAE"
+    ],
+    [
+      78,
+      4,
+      0,
+      57,
+      2,
+      "VAE"
+    ],
+    [
+      79,
+      9,
+      3,
+      57,
+      3,
+      "ANIM_IMAGE_REFERENCES"
+    ],
+    [
+      80,
+      54,
+      1,
+      57,
+      4,
+      "ANIM_VIDEO_REFERENCES"
+    ],
+    [
+      81,
+      51,
+      1,
+      57,
+      6,
+      "ANIM_AUDIO_REFERENCES"
+    ],
+    [
+      82,
+      2,
+      0,
+      57,
+      7,
+      "STRING"
+    ],
+    [
+      83,
+      19,
+      1,
+      57,
+      10,
+      "INT"
+    ],
+    [
+      84,
+      56,
+      0,
+      57,
+      8,
+      "INT"
+    ],
+    [
+      85,
+      56,
+      1,
+      57,
+      9,
+      "INT"
+    ],
+    [
+      86,
+      57,
+      0,
+      32,
+      1,
+      "CONDITIONING"
     ]
   ],
   "groups": [

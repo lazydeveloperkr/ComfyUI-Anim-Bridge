@@ -112,13 +112,17 @@ resolution for 16 GB GPUs such as the RTX 4060 Ti 16GB:
 | Resolution Selector megapixels (first pass) | 0.2 | 0.3 |
 | `MinimaxH3LatentUpscaler3D` megapixels (second pass) | 1.0 | 1.5 |
 | Final video decode | `VAEDecode` | `VAEDecodeTiled` (512/64, temporal 64/8) |
-| H3 `ref_image_size` | `max` | `match` |
+| H3 `ref_image_size`, first pass | `max` | `max` (unchanged) |
+| Second-pass conditioning | same as first pass | separate H3 node, `match` at 1.5 MP |
 
 `max` encodes every reference image at a 2048 px short edge, and those tokens
-are present in every sampling step, so several references at 10 seconds run
-out of memory in the second pass on 16 GB. `match` scales references to the
-generation area. If character identity drops, switch back to `max` and use
-fewer references.
+are present in every sampling step. With several references at 10 seconds,
+carrying them into the larger second pass runs out of memory on 16 GB. The
+first pass keeps `max` so character identity is set there; the second pass
+gets its own conditioning from a second `Anim MiniMax H3 Reference to Video`
+node with `match` references sized to the 1.5 MP output, fed by a second
+Resolution Selector. When you change the aspect ratio, change both Resolution
+Selectors, and keep the second one's megapixels equal to the upscaler target.
 
 At 9:16 the output grows from about 768×1344 to about 928×1664, still
 interpolated to 48 fps by RIFE. Generation takes longer. If it runs out of
