@@ -1782,14 +1782,14 @@
         1344,
         768,
         124,
-        "max"
+        "match"
       ],
       "widgets_values_named": {
         "prompt": "",
         "width": 1344,
         "height": 768,
         "length": 124,
-        "ref_image_size": "max"
+        "ref_image_size": "match"
       }
     },
     {
@@ -3011,7 +3011,7 @@
         "widget_ue_connectable": {}
       },
       "widgets_values": [
-        "## Hi-res 설정 (RTX 4060 Ti 16GB 기준)\n\n| 위치 | 원본 | 이 버전 |\n|---|---|---|\n| Resolution Selector megapixels (1차 생성) | 0.2 | **0.3** |\n| Latent Upscaler 3D megapixels (2차 패스) | 1.0 | **1.5** |\n| 최종 VAE Decode | 일반 | **Tiled** (512 / 64, 시간 64 / 8) |\n\n9:16 기준 최종 출력: 약 **928 x 1664** (원본 약 768 x 1344)\n\n**OOM이 나면 이 순서로 낮추기**\n1. Tiled Decode tile_size 512 → 384, temporal_size 64 → 32\n2. Upscaler megapixels 1.5 → 1.2\n3. 1차 megapixels 0.3 → 0.2\n\n시스템 RAM 32GB면 ComfyUI 실행 옵션에 `--disable-pinned-memory` 권장.\n"
+        "## Hi-res 설정 (RTX 4060 Ti 16GB 기준)\n\n| 위치 | 원본 | 이 버전 |\n|---|---|---|\n| Resolution Selector megapixels (1차 생성) | 0.2 | **0.3** |\n| Latent Upscaler 3D megapixels (2차 패스) | 1.0 | **1.5** |\n| 최종 VAE Decode | 일반 | **Tiled** (512 / 64, 시간 64 / 8) |\n| H3 ref_image_size (레퍼런스 크기) | max | **match** |\n\n9:16 기준 최종 출력: 약 **928 x 1664** (원본 약 768 x 1344)\n\n레퍼런스 이미지는 `max`면 짧은 변 2048px로 매 스텝 계산에 들어가서, 레퍼런스가 많을수록 메모리를 크게 먹어요. `match`는 생성 해상도 크기로 줄여서 넣어요.\n얼굴 유사도가 부족하면 `max`로 되돌리고 레퍼런스 개수를 줄이세요.\n\n**OOM이 나면 이 순서로 낮추기**\n1. Tiled Decode tile_size 512 → 384, temporal_size 64 → 32\n2. Upscaler megapixels 1.5 → 1.2\n3. 1차 megapixels 0.3 → 0.2\n\n시스템 RAM 32GB면 ComfyUI 실행 옵션에 `--disable-pinned-memory` 권장.\n"
       ],
       "widgets_values_named": {
         "text": "| megapixels | Aspect | Output (multiple=32) |\n|---|---|---|\n| 0.2 | 16:9 | 608 x 352 |\n| 0.3 | 16:9 | 736 x 416 |\n| 0.4 | 16:9 | 864 x 480 |\n| 0.5 | 16:9 | 960 x 544 |\n| 0.6 | 16:9 | 1056 x 608 |\n| 0.7 | 16:9 | 1152 x 640 |\n| 0.8 | 16:9 | 1216 x 672 |\n| 0.9 | 16:9 | 1280 x 736 |\n| 0.98 | 16:9 | 1344 x 768 |\n| 1.0 | 16:9 | 1376 x 768 |\n| 1.2 | 16:9 | 1504 x 832 |\n| 1.5 | 16:9 | 1664 x 928 |\n| 1.8 | 16:9 | 1824 x 1024 |\n| 2.0 | 16:9 | 1920 x 1088 |\n"
