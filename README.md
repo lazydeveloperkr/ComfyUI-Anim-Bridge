@@ -101,6 +101,24 @@ and 3 standalone audio references and never truncates extras. When connected,
 the Bridge reports those effective capacities to Anim so oversized requests
 are blocked before upload.
 
+### MiniMax H3 hi-res reference-to-video workflow
+
+`workflows/minimax_h3_r2v_hires_Anim.json` is the same graph as
+`minimax_h3_r2v_Latent Upscaler-fps-up_Anim.json` with a higher output
+resolution for 16 GB GPUs such as the RTX 4060 Ti 16GB:
+
+| Setting | Original | Hi-res |
+| --- | --- | --- |
+| Resolution Selector megapixels (first pass) | 0.2 | 0.3 |
+| `MinimaxH3LatentUpscaler3D` megapixels (second pass) | 1.0 | 1.5 |
+| Final video decode | `VAEDecode` | `VAEDecodeTiled` (512/64, temporal 64/8) |
+
+At 9:16 the output grows from about 768×1344 to about 928×1664, still
+interpolated to 48 fps by RIFE. Generation takes longer. If it runs out of
+memory, lower the tiled decode sizes first, then the upscaler target, then the
+first-pass megapixels. The in-graph note lists the same order. With 32 GB of
+system RAM, start ComfyUI with `--disable-pinned-memory`.
+
 ### Prompt node contract
 
 `Anim Prompt Input` is the recommended prompt contract. Anim recognizes it by
