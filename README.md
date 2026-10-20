@@ -7,8 +7,8 @@ HTTP requests, graph conversions, graph hashes, command queries or result querie
 
 Anim explicitly inspects only the selected workflow, applies and verifies its
 inputs, then uses that workflow tab's native Run path. Execution status retains
-the original ComfyUI prompt ID. The browser forwards frames from its existing
-native socket; it does not add another ComfyUI execution connection. Anim reads
+the original ComfyUI prompt ID. The browser forwards subscribed execution statuses through its existing
+native socket and already-parsed API events; it does not add another ComfyUI execution connection. Anim reads
 history once after the terminal frame, with manual recovery after missed events.
 
 Upgrade both Anim and this extension together, restart ComfyUI, and reload all
@@ -33,6 +33,8 @@ ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   web\anim_bridge.js
   web\push_bridge.js
   web\input_contract.js
+  web\command_queue.js
+  web\workflow_revision.js
 ```
 
 If Git is available, you can install it from a Windows terminal instead:
@@ -293,14 +295,35 @@ only assigned-input readback values. Explicit `refresh`/`loadSample` commands
 return a transient selected-workflow snapshot. Status events carry original
 `prompt_id` values; Anim matches only its own prompt IDs.
 
-The existing native frontend `executing` CustomEvent drops `prompt_id`, so the
-extension reads raw frames from the already-open native WebSocket instead.
+Anim sends `watchPrompt` / `unwatchPrompt` deltas and restores interest with
+`watchPrompts` after reconnecting. The server routes events only to subscribers
+(or a pending queue owner while the prompt ID is being captured). Status payloads
+contain only prompt ID, node, progress and error text.
+
+The native frontend `executing` CustomEvent drops `prompt_id`, so the extension
+reads that event from the already-open native WebSocket. The raw listener is
+removed when no Anim task is tracked; while active it filters the small event
+header before parsing. Other statuses reuse the API's already-parsed events.
 ComfyUI commits history before sending `executing(node: null)`; its earlier
 `execution_success` event is not a safe time to fetch history. No HTTP fallback
 is used for reconnects. Pending operations are bounded (64 server-wide, 16 per
 client/browser) and time out once. Disconnect/timeout cancels pending work, and
 queue commands are never automatically replayed. Already-queued paid execution
 cannot be undone by cancelling the RPC waiter.
+
+Each connection owns an abortable command queue. Cancellation or timeout frees
+the queue even if an old graph inspection never settles; stale continuations
+cannot send results or proceed to another editor action. Outstanding graph reads
+are bounded at two. Native open/load/queue operations do not support cancellation,
+so they retain an editor lease until they actually settle: later commands fail
+promptly with browser reload guidance instead of waiting forever or overlapping
+an unfinished mutation. Queue commands are never replayed.
+
+Persisted `pagehide` suspends the Bridge and `pageshow` restores one connection
+and one hook set after BFCache navigation. Explicit stop remains final. Scalar
+`isDirty` metadata follows native edits without graph conversion. Explicit
+inspection computes a stable structural revision, excluding Anim runtime input
+values; command IDs are not workflow revisions.
 
 ## Media input capacity
 
@@ -373,6 +396,7 @@ not image-generation choices.
 
 | Template | Inputs |
 | --- | --- |
+| `qwen21_firstframe_anim.json` | legacy Qwen scene, size, output prefix and eight optional ordered references |
 | `qwen21_text2image_anim.json` | scene text, size, output prefix; no images |
 | `qwen21_image_text2image_anim.json` | scene text and up to eight ordered images |
 | `krea2_text2image_anim.json` | scene text, size, output prefix; no images |
@@ -381,7 +405,7 @@ not image-generation choices.
 The Krea2 text workflow uses the base Turbo model with eight sampling steps,
 without the identity-edit LoRA. The image-guided workflow uses the same
 `comfyui-krea2edit` extension and identity-edit LoRA as the existing edit template.
-All four expose Anim text, resolution and output inputs. Change the selected
+All five expose Anim text, resolution and output inputs. Change the selected
 workflow to change generation mode. Remove references explicitly when switching
 to a text-only workflow; Anim never discards them automatically.
 
@@ -390,7 +414,7 @@ to a text-only workflow; Anim never discards them automatically.
 
 - `GET /anim_bridge/v1/samples`: filename metadata only, without parsing graphs.
 - Explicit `loadSample` command over `/anim_bridge/v1/events`: allowlisted sample
-  ID; reads only the selected file and imports it in a live browser.
+  ID (including the legacy `qwen21_firstframe_anim.json`); reads only the selected file and imports it in a live browser.
 - A correlated result returns the real imported identity and a transient graph.
   Selecting a sample in Anim alone does not load or inspect a graph.
 
@@ -402,7 +426,11 @@ sample files and existing browser workflows are not overwritten.
 Run `npm test` and `python3 -m unittest discover -s test -p 'test_*.py'`.
 Tests cover metadata-only idle paths, command IDs, duplicate/out-of-order events,
 timeout/disconnect cleanup, reconnect without replay, multi-tab ownership,
-selected-only conversion, readback and native prompt identity.
+selected-only conversion, readback and native prompt identity. Regressions also
+cover stalled reads across cancellation/reconnection, late stale completion,
+stalled native mutations, repeated BFCache restoration, zero idle native JSON
+parsing, minimal subscribed statuses, legacy sample discovery/loading, dirty
+metadata and stable structural revisions.
 
 The idle tests use virtual time/injected sockets. They are not real 30-minute
 Windows/macOS RSS/heap/GPU measurements. The current authoring workspace has no

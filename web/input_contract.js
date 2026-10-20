@@ -290,12 +290,17 @@ export function applyInputValues(getNodeById, inputValues) {
 
 /// Runs [queue] (the tab's own Run) and returns the prompt id ComfyUI gave
 /// the queued prompt, by watching the api.queuePrompt call it makes.
-export async function queueAndCapturePromptId(api, queue) {
+export async function queueAndCapturePromptId(api, queue, check = () => {}, onPrompt = () => {}) {
   const original = api.queuePrompt
   let promptId = ''
   api.queuePrompt = async (...args) => {
+    check()
     const response = await original.apply(api, args)
-    if (!promptId && response?.prompt_id) promptId = String(response.prompt_id)
+    if (!promptId && response?.prompt_id) {
+      promptId = String(response.prompt_id)
+      onPrompt(promptId)
+    }
+    check()
     return response
   }
   try {

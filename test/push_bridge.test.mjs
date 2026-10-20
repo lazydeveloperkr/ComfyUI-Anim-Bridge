@@ -43,7 +43,7 @@ test('30 minutes virtual idle has zero scheduled work, HTTP, graph conversions o
   // No timer exists to advance, even at the 30-minute boundary.
   assert.equal(f.timers.length, 0)
   assert.equal(f.listeners.size, 3)
-  assert.deepEqual(workflowMetadata(f.store), [{ workflowId: 'selected', title: 'Selected', isActive: true, isAvailable: true }])
+  assert.deepEqual(workflowMetadata(f.store), [{ workflowId: 'selected', title: 'Selected', isActive: true, isAvailable: true, isDirty: false }])
   f.bridge.stop()
   assert.equal(f.listeners.size, 0)
   assert.equal(f.actions.length, 0)
@@ -108,8 +108,150 @@ test('duplicate command executes once; missing workflow returns an error event',
 
 test('execution forwards the original prompt identity and listeners are released', () => {
   const f = fixture(); f.sockets[0].open()
+  f.sockets[0].onmessage({ data: JSON.stringify({ event: 'tracking', promptIds: ['p'] }) })
   f.api.socket.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'executing', data: { prompt_id: 'p', node: null } }) }))
   assert.equal(f.sockets[0].messages.at(-1).data.prompt_id, 'p')
   f.bridge.stop()
   assert.equal(f.listeners.size, 0)
+})
+
+const tick = () => new Promise(resolve => setImmediate(resolve))
+const deliver = (socket, command) => socket.onmessage({ data: JSON.stringify(command) })
+const refresh = (id, workflowId = 'selected') => ({ event: 'command', type: 'refresh', commandId: id, workflowId })
+function inspectionFixture() {
+  const f = fixture()
+  const workflow = { path: 'selected', filename: 'Selected', activeState: {} }
+  f.store.openWorkflows = [workflow]; f.store.activeWorkflow = workflow
+  f.app.graph = {}
+  f.store.openWorkflow = async workflow => { f.store.activeWorkflow = workflow }
+  f.sockets[0].open()
+  return f
+}
+
+test('stalled graph read does not block commands after reconnect and late completion is discarded', async () => {
+  const f = inspectionFixture()
+  let release, reads = 0
+  const blocked = new Promise(resolve => { release = resolve })
+  f.app.graphToPrompt = () => ++reads === 1 ? blocked : Promise.resolve({ output: { 1: { class_type: 'AnimPromptInput', inputs: { prompt: 'ok' } } } })
+  deliver(f.sockets[0], refresh('A')); await tick()
+  f.sockets[0].close()
+  assert.equal(f.timers.length, 1)
+  f.timers.shift().callback(); f.sockets[1].open()
+  deliver(f.sockets[1], refresh('B')); await tick()
+  assert.equal(reads, 2)
+  const results = f.sockets[1].messages.filter(value => value.event === 'result')
+  assert.equal(results.length, 1); assert.equal(results[0].commandId, 'B')
+  assert.ok(results[0].snapshot)
+  release({ output: {} }); await tick()
+  assert.equal(f.sockets[1].messages.filter(value => value.event === 'result').length, 1)
+  f.bridge.stop(); assert.equal(f.timers.length, 0)
+})
+
+test('cancel and timeout release the same connection queue while a read remains unresolved', async () => {
+  const f = inspectionFixture()
+  let reads = 0
+  f.app.graphToPrompt = () => ++reads === 1 ? new Promise(() => {}) : Promise.resolve({ output: {} })
+  deliver(f.sockets[0], refresh('A')); await tick()
+  deliver(f.sockets[0], { event: 'cancel', commandId: 'A' })
+  deliver(f.sockets[0], refresh('B')); await tick()
+  assert.ok(f.sockets[0].messages.some(value => value.commandId === 'B' && value.snapshot))
+  f.app.graphToPrompt = () => new Promise(() => {})
+  deliver(f.sockets[0], refresh('C')); await tick()
+  f.timers.find(value => value.milliseconds === 30000).callback()
+  deliver(f.sockets[0], refresh('D')); await tick()
+  // Two unresolved native reads are the cap; failure is immediate, not a hang.
+  assert.match(f.sockets[0].messages.find(value => value.commandId === 'D').error, /Reload/)
+  f.bridge.stop()
+})
+
+test('non-cancellable editor mutation fails new commands promptly until actual completion', async () => {
+  const f = inspectionFixture()
+  let finish, opens = 0, reads = 0
+  f.store.activeWorkflow = null
+  f.store.openWorkflow = workflow => { opens++; return new Promise(resolve => {
+    finish = () => { f.store.activeWorkflow = workflow; resolve() }
+  }) }
+  f.app.graphToPrompt = async () => { reads++; return { output: {} } }
+  deliver(f.sockets[0], refresh('A')); await tick()
+  deliver(f.sockets[0], { event: 'cancel', commandId: 'A' })
+  deliver(f.sockets[0], refresh('B')); await tick()
+  assert.equal(opens, 1); assert.equal(reads, 0)
+  assert.match(f.sockets[0].messages.find(value => value.commandId === 'B').error, /Reload/)
+  finish(); await tick()
+  assert.equal(reads, 0) // The cancelled A cannot continue into inspection.
+  deliver(f.sockets[0], refresh('C')); await tick()
+  assert.equal(reads, 1)
+  assert.ok(f.sockets[0].messages.some(value => value.commandId === 'C' && value.snapshot))
+  f.bridge.stop()
+})
+
+test('BFCache resume installs one connection and hook set; repeated pageshow and final stop are safe', () => {
+  const f = fixture(); f.sockets[0].open()
+  const show = f.windowEvents.get('pageshow')
+  for (let i = 0; i < 3; i++) {
+    f.windowEvents.get('pagehide')({ persisted: true })
+    assert.equal(f.listeners.size, 0); assert.equal(f.actions.length, 0)
+    show({ persisted: true }); f.sockets.at(-1).open()
+    const count = f.sockets.length
+    show({ persisted: true })
+    assert.equal(f.sockets.length, count)
+    assert.equal(f.listeners.size, 3); assert.equal(f.actions.length, 1)
+    assert.equal(f.sockets.at(-1).messages.length, 1)
+    assert.equal(f.timers.length, 0)
+  }
+  f.bridge.stop(); show({ persisted: true })
+  assert.equal(f.windowEvents.size, 0); assert.equal(f.sockets.length, 4)
+})
+
+test('untracked and irrelevant messages are not parsed; forwarded status contains only minimal fields', () => {
+  const f = fixture(); f.sockets[0].open()
+  const raw = JSON.stringify({ type: 'executing', data: { prompt_id: 'p', node: null } })
+  const irrelevant = JSON.stringify({ type: 'executed', data: { output: 'x'.repeat(1000000) } })
+  const parse = JSON.parse
+  let parses = 0
+  JSON.parse = value => { if (value === raw || value === irrelevant) parses++; return parse(value) }
+  try {
+    f.api.socket.dispatchEvent(new MessageEvent('message', { data: raw }))
+    assert.equal(parses, 0)
+    deliver(f.sockets[0], { event: 'tracking', promptIds: ['p'] })
+    f.api.socket.dispatchEvent(new MessageEvent('message', { data: irrelevant }))
+    assert.equal(parses, 0)
+    f.listeners.get('execution_error')({ detail: { prompt_id: 'p', exception_message: 'failed', current_inputs: 'x'.repeat(1000000) } })
+    assert.deepEqual(f.sockets[0].messages.at(-1).data, { prompt_id: 'p', exception_message: 'failed' })
+    deliver(f.sockets[0], { event: 'tracking', promptIds: [] })
+    f.api.socket.dispatchEvent(new MessageEvent('message', { data: raw }))
+    assert.equal(parses, 0)
+    assert.equal(f.listeners.size, 3)
+  } finally { JSON.parse = parse; f.bridge.stop() }
+})
+
+test('inspection revision ignores runtime prompt changes but detects graph changes and dirty state', async () => {
+  const f = inspectionFixture()
+  let prompt = 'first', sampler = 'one'
+  f.app.graphToPrompt = async () => ({ output: {
+    1: { class_type: 'AnimPromptInput', inputs: { prompt } },
+    2: { class_type: 'KSampler', inputs: { sampler_name: sampler } },
+  } })
+  const first = (await executeCommand(f.app, f.api, refresh('a'))).snapshot
+  prompt = 'second'
+  const second = (await executeCommand(f.app, f.api, refresh('b'))).snapshot
+  assert.equal(first.revision, second.revision)
+  sampler = 'two'; f.store.activeWorkflow.isModified = true
+  const third = (await executeCommand(f.app, f.api, refresh('c'))).snapshot
+  assert.notEqual(second.revision, third.revision)
+  assert.equal(third.isDirty, true)
+  f.bridge.stop()
+})
+
+test('native dirty changes publish metadata without converting a graph', async () => {
+  const f = fixture()
+  f.app.graph = {}
+  // Re-activate to observe the newly installed graph.
+  f.windowEvents.get('pagehide')({ persisted: true })
+  f.windowEvents.get('pageshow')({ persisted: true }); f.sockets.at(-1).open()
+  f.store.activeWorkflow.isModified = true
+  f.app.graph.onAfterChange()
+  await tick()
+  assert.equal(f.sockets.at(-1).messages.at(-1).workflows[0].isDirty, true)
+  f.bridge.stop(); assert.equal(f.app.graph.onAfterChange, undefined)
 })

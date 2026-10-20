@@ -214,6 +214,8 @@ class AnimBridgeNodeTest(unittest.TestCase):
         bridge._push.browsers.clear()
         bridge._push.pending.clear()
         bridge._push.clients.clear()
+        bridge._push.subscriptions.clear()
+        bridge._push.queue_commands.clear()
 
 
     def test_prompt_input_returns_the_string(self):
@@ -577,8 +579,26 @@ class AnimBridgeNodeTest(unittest.TestCase):
         ids = {item['workflowId'] for item in payload['workflows']}
         self.assertIn('anim-sample/qwen21_text2image_anim.json', ids)
         self.assertIn('anim-sample/krea2_image_text2image_anim.json', ids)
+        self.assertIn('anim-sample/qwen21_firstframe_anim.json', ids)
+        self.assertEqual(len(ids), 5)
         self.assertNotIn('anim-sample/qwen21_firstframe_3ref.json', ids)
         self.assertNotIn('anim-sample/krea2_image_edit_anim.json', ids)
+
+    def test_legacy_qwen_sample_load_reads_only_selected_file(self):
+        from unittest.mock import patch
+        real_read = pathlib.Path.read_text
+        read = []
+        def record(path, *args, **kwargs):
+            read.append(path.name)
+            return real_read(path, *args, **kwargs)
+        with patch.object(pathlib.Path, 'read_text', record):
+            samples = bridge._image_samples()
+            self.assertIn('anim-sample/qwen21_firstframe_anim.json', samples)
+            self.assertEqual(read, [])
+            loaded = bridge._load_image_sample('anim-sample/qwen21_firstframe_anim.json')
+            self.assertTrue(loaded['nodes'])
+            self.assertEqual(read, ['qwen21_firstframe_anim.json'])
+            self.assertIsNone(bridge._load_image_sample('anim-sample/../../__init__.py'))
 
     def test_health_reports_push_bridge_12(self):
         payload, _ = asyncio.run(bridge.anim_bridge_health(None))

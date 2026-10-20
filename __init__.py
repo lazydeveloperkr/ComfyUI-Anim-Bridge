@@ -137,6 +137,10 @@ async def anim_bridge_events(request):
                             await client.send_json({'event': 'executionDisconnected', 'sessionId': key[0], 'tabId': key[1]})
                 elif event == 'execution':
                     await _push.execution(socket, payload)
+            elif event in ('watchPrompt', 'unwatchPrompt'):
+                await _push.track_one(socket, payload.get('promptId'), event == 'watchPrompt')
+            elif event == 'watchPrompts':
+                await _push.track(socket, payload.get('promptIds'))
             elif event == 'cancel':
                 await _push.cancel(socket, payload.get('commandId'))
             elif event == 'command':
@@ -150,6 +154,8 @@ async def anim_bridge_events(request):
         if role == 'browser':
             await _push.detach(key, socket)
         _push.clients.discard(socket)
+        if role == 'anim':
+            await _push.track(socket, [])
         for task in tasks:
             task.cancel()
         if tasks:
@@ -159,12 +165,20 @@ async def anim_bridge_events(request):
 
 _SAMPLE_DIRECTORY = pathlib.Path(__file__).resolve().parent / 'workflows'
 _SAMPLE_PREFIX = 'anim-sample/'
+_IMAGE_SAMPLE_NAMES = (
+    'qwen21_firstframe_anim.json',
+    'qwen21_text2image_anim.json',
+    'qwen21_image_text2image_anim.json',
+    'krea2_text2image_anim.json',
+    'krea2_image_text2image_anim.json',
+)
 
 
 def _image_samples():
     # File metadata only: never parse every installed graph just to list names.
     return {_SAMPLE_PREFIX + path.name: path
-            for path in sorted(_SAMPLE_DIRECTORY.glob('*text2image_anim.json'))}
+            for name in _IMAGE_SAMPLE_NAMES
+            if (path := _SAMPLE_DIRECTORY / name).is_file()}
 
 
 def _load_image_sample(sample_id):
