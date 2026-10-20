@@ -1,12 +1,12 @@
+import copy
 import json
 import pathlib
+import hashlib
 import re
+import time
 import uuid
 
-from aiohttp import web, WSMsgType
-import asyncio
-
-from .bridge_protocol import PushBridge
+from aiohttp import web
 
 import folder_paths
 import nodes
@@ -28,7 +28,13 @@ except ImportError:
     _StockMiniMaxH3ReferenceToVideo = None
 
 
-_push = PushBridge()
+_sessions = {}
+_commands = {}
+# Results reported by the browser tab for commands that return a value, such
+# as the prompt id of a queue command.
+_command_results = {}
+_stale_after_seconds = 15
+_purge_after_seconds = 300
 
 ANIM_IMAGE_REFERENCES = 'ANIM_IMAGE_REFERENCES'
 ANIM_VIDEO_REFERENCES = 'ANIM_VIDEO_REFERENCES'
@@ -86,116 +92,92 @@ def _json(payload, status=200):
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 12, 'status': 'ok', 'transport': 'websocket'})
+    return _json({'bridgeVersion': 11, 'status': 'ok'})
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/publish')
+async def anim_bridge_publish(request):
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    if not session_id or not tab_id:
+        return _json({'error': 'sessionId and tabId are required'}, 400)
+    now = time.time()
+    workflows = []
+    for item in body.get('workflows') or []:
+        workflow = dict(item)
+        workflow['sessionId'] = session_id
+        workflow['tabId'] = tab_id
+        workflow['lastSeenAt'] = time.strftime(
+            '%Y-%m-%dT%H:%M:%SZ', time.gmtime(now)
+        )
+        workflow['isAvailable'] = True
+        workflows.append(workflow)
+    _sessions[(session_id, tab_id)] = {
+        'lastSeen': now,
+        'workflows': workflows,
+    }
+    completed = str(body.get('completedCommandId') or '').strip()
+    if completed:
+        _commands.pop(completed, None)
+    result = body.get('commandResult')
+    if isinstance(result, dict) and str(result.get('commandId') or '').strip():
+        _command_results[str(result['commandId'])] = {
+            'promptId': str(result.get('promptId') or ''),
+            'error': str(result.get('error') or ''),
+            'at': now,
+            **({'workflowId': str(result['workflowId'])} if result.get('workflowId') else {}),
+        }
+    for command_id in [
+        key
+        for key, value in _command_results.items()
+        if now - value['at'] > _purge_after_seconds
+    ]:
+        _command_results.pop(command_id, None)
+    return _json({'accepted': True})
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/workflows')
 async def anim_bridge_workflows(_request):
-    return _json({'workflows': _push.metadata()})
+    now = time.time()
+    workflows = []
+    expired_sessions = [
+        key
+        for key, session in _sessions.items()
+        if now - session['lastSeen'] > _purge_after_seconds
+    ]
+    for key in expired_sessions:
+        _sessions.pop(key, None)
+    for session in _sessions.values():
+        available = now - session['lastSeen'] <= _stale_after_seconds
+        for item in session['workflows']:
+            workflow = dict(item)
+            workflow['isAvailable'] = available
+            workflows.append(workflow)
+    workflows.sort(key=lambda item: (not item.get('isAvailable', False), item.get('title', '')))
+    return _json({'workflows': workflows})
 
-
-@PromptServer.instance.routes.get('/anim_bridge/v1/events')
-async def anim_bridge_events(request):
-    role = request.query.get('role')
-    key = (request.query.get('session_id', ''), request.query.get('tab_id', ''))
-    if role not in ('browser', 'anim') or (role == 'browser' and not all(key)):
-        return _json({'error': 'A valid role and browser identity are required'}, 400)
-    # Protocol-level ping/pong drops a half-open connection (sleep, network
-    # change) instead of listing a tab that can no longer receive commands.
-    socket = web.WebSocketResponse(max_msg_size=32 * 1024 * 1024, heartbeat=20)
-    await socket.prepare(request)
-    tasks = set()
-
-    async def command(payload):
-        try:
-            result = await _push.command(socket, payload, _load_image_sample)
-            await socket.send_json({'event': 'result', **result})
-        except Exception as error:
-            if not socket.closed:
-                # Never send an empty error: Anim would treat it as success.
-                message = str(error) or type(error).__name__
-                await socket.send_json({'event': 'result',
-                                        'commandId': payload.get('commandId'), 'error': message})
-
-    if role == 'browser':
-        try:
-            client = int(request.query.get('client', '0'))
-        except ValueError:
-            client = 0
-        await _push.attach(key, socket, client)
-    else:
-        _push.clients.add(socket)
-    await socket.send_json({'event': 'ready', 'bridgeVersion': 12})
-    try:
-        async for message in socket:
-            if message.type != WSMsgType.TEXT:
-                continue
-            payload = json.loads(message.data)
-            if not isinstance(payload, dict):
-                continue
-            event = payload.get('event')
-            if role == 'browser':
-                if event == 'metadata':
-                    await _push.publish(key, socket, payload.get('workflows') or [])
-                elif event == 'ack':
-                    _push.ack(socket, payload)
-                elif event == 'result':
-                    _push.result(socket, payload)
-                elif event == 'executionDisconnected':
-                    for client in list(_push.clients):
-                        if not client.closed:
-                            await client.send_json({'event': 'executionDisconnected', 'sessionId': key[0], 'tabId': key[1]})
-                elif event == 'execution':
-                    await _push.execution(socket, payload)
-            elif event in ('watchPrompt', 'unwatchPrompt'):
-                await _push.track_one(socket, payload.get('promptId'), event == 'watchPrompt')
-            elif event == 'watchPrompts':
-                await _push.track(socket, payload.get('promptIds'))
-            elif event == 'cancel':
-                await _push.cancel(socket, payload.get('commandId'))
-            elif event == 'command':
-                if len(tasks) >= 16:
-                    await socket.close(code=1008, message=b'Too many commands')
-                    break
-                task = asyncio.create_task(command(payload))
-                tasks.add(task)
-                task.add_done_callback(tasks.discard)
-    finally:
-        if role == 'browser':
-            await _push.detach(key, socket)
-        _push.clients.discard(socket)
-        if role == 'anim':
-            await _push.track(socket, [])
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-    return socket
 
 
 _SAMPLE_DIRECTORY = pathlib.Path(__file__).resolve().parent / 'workflows'
 _SAMPLE_PREFIX = 'anim-sample/'
-_IMAGE_SAMPLE_NAMES = (
-    'qwen21_firstframe_anim.json',
-    'qwen21_text2image_anim.json',
-    'qwen21_image_text2image_anim.json',
-    'krea2_text2image_anim.json',
-    'krea2_image_text2image_anim.json',
-)
 
 
 def _image_samples():
-    # File metadata only: never parse every installed graph just to list names.
-    return {_SAMPLE_PREFIX + path.name: path
-            for name in _IMAGE_SAMPLE_NAMES
-            if (path := _SAMPLE_DIRECTORY / name).is_file()}
-
-
-def _load_image_sample(sample_id):
-    path = _image_samples().get(sample_id)
-    if path is None:
-        return None
-    return json.loads(path.read_text(encoding='utf-8'))
+    samples = {}
+    for path in sorted(_SAMPLE_DIRECTORY.glob('*.json')):
+        try:
+            data = json.loads(path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        # Only image generation samples, not raw examples or video/edit graphs.
+        if any(node.get('type') == 'AnimTextInput' and
+               (node.get('widgets_values') or [None])[0] == 'scene'
+               for node in data.get('nodes', [])):
+            samples[_SAMPLE_PREFIX + path.name] = data
+    return samples
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/samples')
@@ -203,9 +185,171 @@ async def anim_bridge_samples(_request):
     return _json({'workflows': [
         {'workflowId': sample_id, 'sessionId': 'installed-samples', 'tabId': '',
          'title': sample_id[len(_SAMPLE_PREFIX):], 'protocolVersion': '2.0',
-         'revision': '', 'isAvailable': True, 'isActive': False, 'isDirty': False}
+         'revision': hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest(),
+         'apiGraph': {}, 'isAvailable': True, 'isActive': False, 'isDirty': False}
         for sample_id, data in _image_samples().items()
     ]})
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/load_sample')
+async def anim_bridge_load_sample(request):
+    body = await request.json()
+    sample_id = str(body.get('workflowId') or '')
+    data = _image_samples().get(sample_id)
+    if data is None:
+        return _json({'error': 'Installed image workflow sample was not found'}, 404)
+    live = [(key, session) for key, session in _sessions.items()
+            if time.time() - session['lastSeen'] <= _stale_after_seconds]
+    if not live:
+        return _json({'error': 'Open a ComfyUI browser with Anim Bridge enabled to load this sample'}, 409)
+    (session_id, tab_id), _ = max(live, key=lambda item: item[1]['lastSeen'])
+    command_id = _queue_command(session_id, tab_id, sample_id, 'loadSample')
+    _commands[command_id]['sample'] = copy.deepcopy(data)
+    _commands[command_id]['sample']['id'] = str(uuid.uuid4())
+    _commands[command_id]['sampleName'] = sample_id[len(_SAMPLE_PREFIX):]
+    return _json({'commandId': command_id, 'sessionId': session_id, 'tabId': tab_id}, 202)
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/refresh')
+async def anim_bridge_refresh(request):
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    workflow_id = str(body.get('workflowId') or '').strip()
+    if not session_id or not tab_id or not workflow_id:
+        return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='refresh',
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/apply')
+async def anim_bridge_apply(request):
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    workflow_id = str(body.get('workflowId') or '').strip()
+    inputs = body.get('inputs')
+    if not session_id or not tab_id or not workflow_id:
+        return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not isinstance(inputs, dict) or not inputs:
+        return _json({'error': 'inputs must be a non-empty object'}, 400)
+    for input_id, value in inputs.items():
+        if not isinstance(input_id, str) or '.' not in input_id:
+            return _json({'error': f'Invalid input mapping: {input_id}'}, 400)
+        if not isinstance(value, (str, list)) or (
+            isinstance(value, list)
+            and not all(isinstance(item, str) for item in value)
+        ):
+            return _json(
+                {'error': f'Unsupported value for input mapping: {input_id}'},
+                400,
+            )
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='applyInputs',
+        inputs=inputs,
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/queue')
+async def anim_bridge_queue(request):
+    """Runs the open workflow tab the way its own Run button does."""
+    body = await request.json()
+    session_id = str(body.get('sessionId') or '').strip()
+    tab_id = str(body.get('tabId') or '').strip()
+    workflow_id = str(body.get('workflowId') or '').strip()
+    if not session_id or not tab_id or not workflow_id:
+        return _json({'error': 'sessionId, tabId, and workflowId are required'}, 400)
+    if not _workflow_is_open(session_id, tab_id, workflow_id):
+        return _json({'error': 'The selected workflow tab is not available'}, 404)
+    command_id = _queue_command(
+        session_id,
+        tab_id,
+        workflow_id,
+        command_type='queuePrompt',
+    )
+    return _json({'commandId': command_id}, 202)
+
+
+@PromptServer.instance.routes.get('/anim_bridge/v1/command_result')
+async def anim_bridge_command_result(request):
+    command_id = request.query.get('command_id', '')
+    result = _command_results.get(command_id)
+    if result is None:
+        return _json({'status': 'pending'})
+    return _json(
+        {
+            'status': 'done',
+            'promptId': result['promptId'],
+            'error': result['error'],
+            **({'workflowId': result['workflowId']} if result.get('workflowId') else {}),
+        }
+    )
+
+
+def _workflow_is_open(session_id, tab_id, workflow_id):
+    session = _sessions.get((session_id, tab_id))
+    return (
+        session is not None
+        and time.time() - session['lastSeen'] <= _stale_after_seconds
+        and any(
+            item.get('workflowId') == workflow_id
+            for item in session['workflows']
+        )
+    )
+
+
+def _queue_command(
+    session_id,
+    tab_id,
+    workflow_id,
+    command_type,
+    inputs=None,
+):
+    command_id = uuid.uuid4().hex
+    command = {
+        'commandId': command_id,
+        'type': command_type,
+        'sessionId': session_id,
+        'tabId': tab_id,
+        'workflowId': workflow_id,
+        'createdAt': time.time(),
+    }
+    if inputs is not None:
+        command['inputs'] = dict(inputs)
+    _commands[command_id] = command
+    return command_id
+
+
+@PromptServer.instance.routes.get('/anim_bridge/v1/commands')
+async def anim_bridge_commands(request):
+    session_id = request.query.get('session_id', '')
+    tab_id = request.query.get('tab_id', '')
+    now = time.time()
+    expired = [
+        command_id
+        for command_id, command in _commands.items()
+        if now - command['createdAt'] > 30
+    ]
+    for command_id in expired:
+        _commands.pop(command_id, None)
+    commands = [
+        command
+        for command in _commands.values()
+        if command['sessionId'] == session_id and command['tabId'] == tab_id
+    ]
+    return _json({'commands': commands})
 
 
 WEB_DIRECTORY = './web'
