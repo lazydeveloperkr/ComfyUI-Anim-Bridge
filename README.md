@@ -1,15 +1,20 @@
 # ComfyUI Anim Bridge
 
 ComfyUI Anim Bridge lets Anim discover the workflows that are currently open
-in the ComfyUI frontend. It reports each open tab, workflow revision, Builder
-User Inputs, and output nodes to the same ComfyUI server.
+in the ComfyUI frontend. Bridge 12 publishes lightweight tab/workflow metadata
+through one persistent WebSocket per browser document. There are no periodic
+HTTP requests, graph conversions, graph hashes, command queries or result queries.
 
-It does not install a video model or run generation by itself. Anim uses it
-because the standard ComfyUI API does not expose the list of workflows open in
-browser tabs. Immediately before generation, the Bridge writes Anim's prompt
-and uploaded media file names into the mapped widgets in the selected open
-workflow. This makes the exact inputs visible in ComfyUI before Anim submits
-the same graph to `/prompt`.
+Anim explicitly inspects only the selected workflow, applies and verifies its
+inputs, then uses that workflow tab's native Run path. Execution status retains
+the original ComfyUI prompt ID. The browser forwards subscribed execution statuses through its existing
+native socket and already-parsed API events; it does not add another ComfyUI execution connection. Anim reads
+history once after the terminal frame, with manual recovery after missed events.
+
+Upgrade both Anim and this extension together, restart ComfyUI, and reload all
+browser tabs. Older Bridge versions do not receive a polling fallback. After a
+browser page reload, refresh Anim's list and reselect the live tab. IDs are unique
+per document so duplicated browser tabs cannot steal each other's commands.
 
 ## Install in ComfyUI-Easy-Install on Windows
 
@@ -24,8 +29,12 @@ the same graph to `/prompt`.
 ```text
 ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   __init__.py
+  bridge_protocol.py
   web\anim_bridge.js
+  web\push_bridge.js
   web\input_contract.js
+  web\command_queue.js
+  web\workflow_revision.js
 ```
 
 If Git is available, you can install it from a Windows terminal instead:
@@ -75,11 +84,11 @@ Anim input node types above or legacy Builder User Inputs.
 When generation starts, Anim first opens the selected ComfyUI workflow tab and
 fills its mapped prompt, image, video, and audio widgets. `Anim Image
 References` redraws its ordered image cards from the received paths. Anim then
-reads the published workflow back and checks every mapped value. If any widget
-is missing or does not show the exact value, generation stops without sending
-the workflow to `/prompt`. Runtime prompt and reference values do not count as
-a workflow structure revision, so one Sequence's visible inputs do not make
-the next Sequence look stale.
+validates the actual assigned widget values returned in the completion event.
+Before queueing, the browser checks those values again so another submission or
+manual edit cannot accidentally run different inputs. An explicit inspection
+converts one selected graph; after deriving mappings and preview information,
+Anim releases the executable graph. No graph/result cache lives on the server.
 
 ### MiniMax H3 reference-to-video nodes
 
@@ -296,15 +305,43 @@ video, or audio file because that would silently change the generated result.
 
 ## Running a workflow from its tab
 
-Bridge 6 adds `POST /anim_bridge/v1/queue` with `sessionId`, `tabId`, and
-`workflowId`. The open ComfyUI tab runs the workflow through its own Run
-path (`app.queuePrompt`), exactly as if the Run button were pressed, and
-reports the queued prompt id. Anim reads it from
-`GET /anim_bridge/v1/command_result?command_id=...`, which answers
-`{"status": "pending"}` until the tab reports
-`{"status": "done", "promptId": "...", "error": ""}`. Anim uses this for image
-workflows so the prompt is the one ComfyUI itself builds, then reads the
-result from `/history`.
+Bridge 12 accepts correlated `queuePrompt` commands over
+`/anim_bridge/v1/events`. The selected tab runs through `app.queuePrompt` and
+responds `{event: result, commandId, promptId}` or a matching error. There are no
+`/commands`, `/command_result`, `/publish`, or HTTP command routes. Apply returns
+only assigned-input readback values. Explicit `refresh`/`loadSample` commands
+return a transient selected-workflow snapshot. Status events carry original
+`prompt_id` values; Anim matches only its own prompt IDs.
+
+Anim sends `watchPrompt` / `unwatchPrompt` deltas and restores interest with
+`watchPrompts` after reconnecting. The server routes events only to subscribers
+(or a pending queue owner while the prompt ID is being captured). Status payloads
+contain only prompt ID, node, progress and error text.
+
+The native frontend `executing` CustomEvent drops `prompt_id`, so the extension
+reads that event from the already-open native WebSocket. The raw listener is
+removed when no Anim task is tracked; while active it filters the small event
+header before parsing. Other statuses reuse the API's already-parsed events.
+ComfyUI commits history before sending `executing(node: null)`; its earlier
+`execution_success` event is not a safe time to fetch history. No HTTP fallback
+is used for reconnects. Pending operations are bounded (64 server-wide, 16 per
+client/browser) and time out once. Disconnect/timeout cancels pending work, and
+queue commands are never automatically replayed. Already-queued paid execution
+cannot be undone by cancelling the RPC waiter.
+
+Each connection owns an abortable command queue. Cancellation or timeout frees
+the queue even if an old graph inspection never settles; stale continuations
+cannot send results or proceed to another editor action. Outstanding graph reads
+are bounded at two. Native open/load/queue operations do not support cancellation,
+so they retain an editor lease until they actually settle: later commands fail
+promptly with browser reload guidance instead of waiting forever or overlapping
+an unfinished mutation. Queue commands are never replayed.
+
+Persisted `pagehide` suspends the Bridge and `pageshow` restores one connection
+and one hook set after BFCache navigation. Explicit stop remains final. Scalar
+`isDirty` metadata follows native edits without graph conversion. Explicit
+inspection computes a stable structural revision, excluding Anim runtime input
+values; command IDs are not workflow revisions.
 
 ## Media input capacity
 
@@ -340,7 +377,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 11, "status": "ok"}
+{"bridgeVersion": 12, "status": "ok", "transport": "websocket"}
 ```
 
 ## Update
@@ -377,6 +414,7 @@ not image-generation choices.
 
 | Template | Inputs |
 | --- | --- |
+| `qwen21_firstframe_anim.json` | legacy Qwen scene, size, output prefix and eight optional ordered references |
 | `qwen21_text2image_anim.json` | scene text, size, output prefix; no images |
 | `qwen21_image_text2image_anim.json` | scene text and up to eight ordered images |
 | `krea2_text2image_anim.json` | scene text, size, output prefix; no images |
@@ -385,20 +423,39 @@ not image-generation choices.
 The Krea2 text workflow uses the base Turbo model with eight sampling steps,
 without the identity-edit LoRA. The image-guided workflow uses the same
 `comfyui-krea2edit` extension and identity-edit LoRA as the existing edit template.
-All four expose Anim text, resolution and output inputs. Change the selected
+All five expose Anim text, resolution and output inputs. Change the selected
 workflow to change generation mode. Remove references explicitly when switching
 to a text-only workflow; Anim never discards them automatically.
 
 
-### Installed sample API (Bridge 11)
+### Installed sample API (Bridge 12)
 
-- `GET /anim_bridge/v1/samples`: image sample catalog from this extension's local
-  workflows folder, available without browser sessions.
-- `POST /anim_bridge/v1/load_sample` with an allowlisted `workflowId`: queues an
-  import to the most recently active live Bridge browser. It returns command,
-  session and tab IDs. A browser is required for import/execution, not listing.
-- `command_result` returns the imported `workflowId` or a load error. The app
-  waits for its published graph before allowing generation.
+- `GET /anim_bridge/v1/samples`: filename metadata only, without parsing graphs.
+- Explicit `loadSample` command over `/anim_bridge/v1/events`: allowlisted sample
+  ID (including the legacy `qwen21_firstframe_anim.json`); reads only the selected file and imports it in a live browser.
+- A correlated result returns the real imported identity and a transient graph.
+  Selecting a sample in Anim alone does not load or inspect a graph.
 
 Imports use ComfyUI's normal new-workflow loader and fresh graph IDs; original
 sample files and existing browser workflows are not overwritten.
+
+### Testing and remaining runtime acceptance
+
+Run `npm test` and `python3 -m unittest discover -s test -p 'test_*.py'`.
+Tests cover metadata-only idle paths, command IDs, duplicate/out-of-order events,
+timeout/disconnect cleanup, reconnect without replay, multi-tab ownership,
+selected-only conversion, readback and native prompt identity. Regressions also
+cover stalled reads across cancellation/reconnection, late stale completion,
+stalled native mutations, repeated BFCache restoration, zero idle native JSON
+parsing, minimal subscribed statuses, legacy sample discovery/loading, dirty
+metadata and stable structural revisions.
+
+The idle tests use virtual time/injected sockets. They are not real 30-minute
+Windows/macOS RSS/heap/GPU measurements. The current authoring workspace has no
+running ComfyUI or Windows host. Before accepting issue 185, record real idle
+HTTP/graph/hash counts, RSS/heap/listener/queue measurements, generation/download
+results and reconnect/restart cases on both platforms. See the paired Anim PR's
+`docs/comfyui_push_verification.md` for the reproducible acceptance procedure.
+
+Anim project/portable/Excel exports preserve workflow references and selected
+input metadata only; the executable workflow remains in ComfyUI.
