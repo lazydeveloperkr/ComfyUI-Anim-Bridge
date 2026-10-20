@@ -33,6 +33,7 @@ ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   web\semantic_inputs.js
   web\command_queue.js
   web\input_contract.js
+  web\bridge_logging.js
 ```
 
 If Git is available, you can install it from a Windows terminal instead:
@@ -46,6 +47,28 @@ git clone https://github.com/lazydeveloperkr/ComfyUI-Anim-Bridge.git comfyui_ani
 
 Place this repository at `ComfyUI/custom_nodes/comfyui_anim_bridge`, restart
 ComfyUI, and reload every open ComfyUI browser tab.
+
+## Read Bridge diagnostics
+
+Restart ComfyUI after updating Python files, then reload the ComfyUI frontend
+to load its JavaScript changes. In the ComfyUI server console or Desktop server
+logs, search for `[Anim Bridge]`. Startup prints `server.loaded`; connections
+print `socket.connected` and `browser.connected`.
+
+A request prints `command.received`, `command.forward`, then browser stages
+`command.received`, `command.started`, `tab.ready`, `inputs.applying`,
+`inputs.applied`, `run.started`, `run.received`, followed by `command.receipt`,
+`execution.terminal` and `completion.send`. Match entries by `requestId`;
+`promptId` links native execution to its receipt. Errors print `command.failed`.
+Input-only commands stop after input application and never print `run.started`.
+The last printed stage identifies where the request stopped.
+
+Browser stages are also printed in the frontend developer tools Console, and
+forwarded over the existing Bridge socket to the server console. Before that
+socket connects, frontend startup/socket errors are visible only in developer
+tools (browser: F12 or Command-Option-J on macOS). No periodic logging or extra
+connection is added. Logs contain stage/identity/error summaries, never complete
+workflows, prompts, media contents or credential payloads.
 
 ## Prepare a workflow for Anim
 

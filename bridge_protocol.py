@@ -2,6 +2,20 @@
 import asyncio
 import base64
 import json
+import logging
+import re
+
+
+def trace(event, **fields):
+    # Never pass workflow graphs, prompts, reference paths or credentials here.
+    def safe(value):
+        if not isinstance(value, str):
+            return value
+        value = re.sub(r'(?i)(bearer\s+)\S+', r'\1<redacted>', value)
+        value = re.sub(r'(?i)((?:api[_-]?key|token|authorization)\s*[=:]\s*)[^\s,;]+', r'\1<redacted>', value)
+        return value[:500]
+    logging.getLogger('anim_bridge').info('[Anim Bridge] %s', json.dumps(
+        {'stage': event, **{key: safe(value) for key, value in fields.items()}}, ensure_ascii=False))
 
 
 class PushBridge:
@@ -35,6 +49,7 @@ class PushBridge:
             self.clients.discard(socket)
 
     async def attach(self, key, socket):
+        trace('browser.connected', sessionId=key[0], tabId=key[1])
         old = self.browsers.get(key)
         if old:
             await old['socket'].close()
@@ -47,12 +62,14 @@ class PushBridge:
             return
         browser['workflows'] = {str(w['workflowId']): str(w['name']) for w in workflows[:256]
                                 if isinstance(w, dict) and w.get('workflowId') and w.get('name')}
+        trace('workflows.received', tabId=key[1], count=len(browser['workflows']))
         await self.lists()
 
     async def detach(self, key, socket):
         if self.browsers.get(key, {}).get('socket') is not socket:
             return
         del self.browsers[key]
+        trace('browser.disconnected', tabId=key[1])
         for owner, target, future in list(self.pending.values()):
             if target is socket and not future.done():
                 future.set_exception(ConnectionError('The selected ComfyUI tab disconnected. Select its new identity after reconnecting.'))
@@ -68,6 +85,9 @@ class PushBridge:
 
     async def command(self, owner, payload, samples, timeout=30):
         request_id = payload.get('requestId')
+        trace('command.received', requestId=str(request_id), command=str(payload.get('type')),
+              workflowId=str(payload.get('id')), workflowName=str(payload.get('name')),
+              connectedBrowsers=len(self.browsers), openWorkflows=len(self.metadata()))
         if not isinstance(request_id, str) or not request_id or len(request_id) > 256:
             raise ValueError('A request ID is required')
         if request_id in self.seen:
@@ -99,11 +119,13 @@ class PushBridge:
             self.seen.pop(next(iter(self.seen)))
         self.pending[request_id] = (owner, target, future)
         try:
+            trace('command.forward', requestId=request_id, tabId=key[1], command=kind)
             await target.send_json({'event': 'command', 'requestId': request_id, 'commandId': request_id,
                                     'type': kind, 'workflowId': path, 'name': name,
                                     'parameters': payload['parameters'], **({'sample': sample} if sample else {})})
             return await asyncio.wait_for(future, timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
+            trace('command.cancelled_or_timed_out', requestId=request_id)
             await self.send(target, {'event': 'cancel', 'requestId': request_id})
             raise
         finally:
@@ -115,6 +137,8 @@ class PushBridge:
         if not item or item[1] is not socket or item[2].done():
             return
         owner, _, future = item
+        trace('command.receipt', requestId=request_id, applied=payload.get('applied') is True,
+              promptId=str(payload.get('promptId') or ''), error=str(payload.get('error') or ''))
         # Only tiny receipts cross the boundary. Never relay a supplied snapshot.
         result = {'requestId': request_id, 'applied': payload.get('applied') is True}
         if payload.get('error'):
@@ -139,6 +163,8 @@ class PushBridge:
 
     def execution(self, prompt_id, error=''):
         # Called only by the native server observer on its own event loop.
+        if prompt_id in self.jobs or self.pending:
+            trace('execution.terminal', promptId=prompt_id, error=error, waitingForReceipt=prompt_id not in self.jobs)
         event = {'error': error}
         if prompt_id in self.jobs:
             self.finish(prompt_id, event)
@@ -185,5 +211,7 @@ class PushBridge:
         if len(self.finished) > 64:
             self.finished.pop(next(iter(self.finished)))
         self.jobs.pop(prompt_id, None)
+        trace('completion.send', requestId=job['requestId'], promptId=prompt_id,
+              fileCount=len(result['files']), error=result['error'], listeners=len(job['owners']))
         for owner in list(job['owners']):
             await self.send(owner, result)

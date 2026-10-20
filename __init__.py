@@ -9,7 +9,7 @@ import uuid
 from aiohttp import web, WSMsgType
 import asyncio
 
-from .bridge_protocol import PushBridge
+from .bridge_protocol import PushBridge, trace
 from .execution_events import install_execution_observer
 
 import folder_paths
@@ -43,6 +43,7 @@ def _completed_outputs(prompt_id):
 
 _push = PushBridge(_completed_outputs)
 install_execution_observer(PromptServer.instance, _push)
+trace('server.loaded', bridgeVersion=13)
 
 ANIM_IMAGE_REFERENCES = 'ANIM_IMAGE_REFERENCES'
 ANIM_VIDEO_REFERENCES = 'ANIM_VIDEO_REFERENCES'
@@ -139,15 +140,18 @@ async def anim_bridge_events(request):
         return _json({'error': 'A browser identity and role are required'}, 400)
     socket = web.WebSocketResponse(max_msg_size=1024 * 1024)
     await socket.prepare(request)
+    trace('socket.connected', role=role, tabId=key[1])
     tasks = set()
     async def command(payload):
         try:
             result = await _push.command(socket, payload, _load_image_sample)
             await _push.send(socket, {'event': 'result', **result})
         except asyncio.TimeoutError:
+            trace('command.failed', requestId=str(payload.get('requestId')), error='Browser command timed out after 30 seconds')
             await _push.send(socket, {'event': 'result', 'requestId': payload.get('requestId'),
                 'error': 'The ComfyUI browser did not finish the request within 30 seconds. Check its connection; execution was not retried.'})
         except Exception as error:
+            trace('command.failed', requestId=str(payload.get('requestId')), error=str(error))
             await _push.send(socket, {'event': 'result', 'requestId': payload.get('requestId'), 'error': str(error)})
     if role == 'browser':
         await _push.attach(key, socket)
@@ -171,6 +175,15 @@ async def anim_bridge_events(request):
                         await _push.publish(key, socket, payload.get('workflows') or [])
                     elif event == 'result':
                         _push.result(socket, payload)
+                    elif event == 'diagnostic':
+                        stage = payload.get('stage')
+                        if stage in ('command.received', 'command.started', 'tab.loading', 'tab.ready',
+                                     'inputs.applying', 'inputs.applied', 'run.started', 'run.received',
+                                     'command.finished', 'command.failed', 'command.cancelled'):
+                            trace('browser.' + stage, tabId=key[1],
+                                  requestId=str(payload.get('requestId') or ''),
+                                  promptId=str(payload.get('promptId') or ''),
+                                  error=str(payload.get('error') or ''))
                 elif event == 'command':
                     if len(tasks) >= 32:
                         raise ValueError('Too many requests')
@@ -184,8 +197,10 @@ async def anim_bridge_events(request):
                     if pending and pending[0] is socket:
                         pending[2].cancel()
             except (ValueError, TypeError) as error:
+                trace('socket.invalid_message', role=role, error=str(error))
                 await _push.send(socket, {'event': 'result', 'requestId': payload.get('requestId') if isinstance(payload, dict) else None, 'error': str(error)})
     finally:
+        trace('socket.disconnected', role=role, tabId=key[1])
         if role == 'browser':
             await _push.detach(key, socket)
         else:

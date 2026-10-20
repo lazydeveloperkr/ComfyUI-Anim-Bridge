@@ -1,6 +1,7 @@
 import { CommandQueue, EditorOperations } from './command_queue.js'
 import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js'
 import { applySemanticInputs } from './semantic_inputs.js'
+import { trace as consoleTrace } from './bridge_logging.js'
 
 export function workflowMetadata(store) {
   return (store.openWorkflows || []).map(workflow => ({
@@ -8,7 +9,9 @@ export function workflowMetadata(store) {
   }))
 }
 
-export async function executeCommand(app, api, command, check, editor) {
+export async function executeCommand(app, api, command, check, editor, trace = consoleTrace) {
+  const log = (stage, fields = {}) => trace(stage, { requestId: command.requestId, ...fields })
+  log('command.started')
   check(); editor.checkIdle()
   const store = app.extensionManager.workflow
   let path = command.workflowId
@@ -19,6 +22,7 @@ export async function executeCommand(app, api, command, check, editor) {
   const workflow = store.openWorkflows.find(workflow => workflow.path === path)
   if (!workflow || (!command.sample && (workflow.filename || workflow.key || workflow.path) !== command.name)) throw new Error('The workflow name or ID changed. Select it again.')
   if (store.activeWorkflow?.path !== workflow.path) {
+    log('tab.loading')
     await editor.mutate(async () => {
       if (!workflow.isLoaded && workflow.load) await workflow.load()
       check()
@@ -31,18 +35,24 @@ export async function executeCommand(app, api, command, check, editor) {
       if (loaded === false || store.activeWorkflow?.path !== workflow.path) throw new Error('ComfyUI did not activate the selected workflow.')
     }, check)
   }
+  log('tab.ready')
   check()
+  log('inputs.applying')
   applySemanticInputs(app, workflow, command.parameters)
+  log('inputs.applied')
   check()
   if (command.type === 'apply') return { applied: true }
+  log('run.started')
   const promptId = await editor.mutate(() => queueAndCapturePromptId(api,
       () => app.queuePrompt(0, 1), check), check)
+  log('run.received', { promptId })
   return { applied: true, promptId }
 }
 
 export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = WebSocket,
   windowImpl = window, schedule = setTimeout, unschedule = clearTimeout }) {
   const store = app.extensionManager?.workflow
+  consoleTrace('frontend.starting')
   if (!store) throw new Error('ComfyUI workflow store is unavailable')
   const editor = new EditorOperations()
   let stopped = false, state
@@ -52,6 +62,7 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
     }
     const active = () => state === scope && !stopped
     const send = payload => { if (active() && scope.socket?.readyState === 1) scope.socket.send(JSON.stringify(payload)) }
+    const trace = (stage, fields) => send({ event: 'diagnostic', ...consoleTrace(stage, fields) })
     const publish = () => {
       if (!active() || scope.socket?.readyState !== 1) return
       const workflows = workflowMetadata(store), serialized = JSON.stringify(workflows)
@@ -72,20 +83,27 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
       const seen = new Set()
       const queue = scope.queue = new CommandQueue((command, signal) => {
         const check = () => { signal.throwIfAborted(); if (!current()) throw new Error('Bridge disconnected') }
-        return executeCommand(app, api, command, check, editor)
-      }, (command, result, error) => { if (current()) { send({ event: 'result', requestId: command.requestId, ...(error ? { error: String(error) } : result) }); publish() } }, { schedule, unschedule })
-      socket.onopen = () => { if (current()) { scope.attempt = 0; scope.previous = ''; publish() } }
+        return executeCommand(app, api, command, check, editor, trace)
+      }, (command, result, error) => {
+        if (current()) {
+          trace(error ? 'command.failed' : 'command.finished', { requestId: command.requestId, promptId: result?.promptId, error: error ? String(error) : '' })
+          send({ event: 'result', requestId: command.requestId, ...(error ? { error: String(error) } : result) }); publish()
+        }
+      }, { schedule, unschedule })
+      socket.onopen = () => { if (current()) { consoleTrace('socket.connected'); scope.attempt = 0; scope.previous = ''; publish() } }
       socket.onmessage = message => {
         if (!current()) return
         let command
         try { command = JSON.parse(message.data) } catch { return }
-        if (command.event === 'cancel') { queue.cancel(command.requestId); return }
+        if (command.event === 'cancel') { trace('command.cancelled', { requestId: command.requestId }); queue.cancel(command.requestId); return }
         if (command.event !== 'command' || !command.requestId || seen.has(command.requestId)) return
+        trace('command.received', { requestId: command.requestId })
         seen.add(command.requestId); if (seen.size > 128) seen.delete(seen.values().next().value)
         queue.enqueue(command)
       }
-      socket.onerror = () => socket.close()
+      socket.onerror = () => { consoleTrace('socket.error'); socket.close() }
       socket.onclose = () => {
+        consoleTrace('socket.disconnected')
         queue.close()
         if (!active() || scope.socket !== socket) return
         scope.retry = schedule(connect, Math.min(30000, 500 * 2 ** Math.min(scope.attempt++, 6)))
