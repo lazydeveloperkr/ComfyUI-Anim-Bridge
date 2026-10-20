@@ -123,6 +123,7 @@ class PushBridge:
             await target.send_json({'event': 'command', 'requestId': request_id, 'commandId': request_id,
                                     'type': kind, 'workflowId': path, 'name': name,
                                     'parameters': payload['parameters'], **({'sample': sample} if sample else {})})
+            trace('command.sent', requestId=request_id, tabId=key[1])
             return await asyncio.wait_for(future, timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             trace('command.cancelled_or_timed_out', requestId=request_id)

@@ -63,6 +63,17 @@ A request prints `command.received`, `command.forward`, then browser stages
 Input-only commands stop after input application and never print `run.started`.
 The last printed stage identifies where the request stopped.
 
+For Windows ComfyUI EZ Desktop, use its existing ComfyUI server log view; no
+developer-tools shortcut is required. After updating, restart the ComfyUI server
+and fully close/reopen its frontend window. `socket.connected` for role browser
+should include `frontendBuild: "13-diag2"`; `unknown` means the connected frontend
+has not loaded the diagnostic build. `browser.socket.ready` confirms that a
+server frame reached the frontend and its acknowledgment returned.
+`command.sent` confirms the server send finished. `browser.message.failed` and
+`browser.frontend.error` report decoding/handler errors that previously could
+leave the UI silent. These diagnostics locate the failure; they do not certify
+that the Windows video-generation problem is fixed.
+
 Browser stages are also printed in the frontend developer tools Console, and
 forwarded over the existing Bridge socket to the server console. Before that
 socket connects, frontend startup/socket errors are visible only in developer

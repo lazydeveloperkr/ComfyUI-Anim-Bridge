@@ -140,7 +140,7 @@ async def anim_bridge_events(request):
         return _json({'error': 'A browser identity and role are required'}, 400)
     socket = web.WebSocketResponse(max_msg_size=1024 * 1024)
     await socket.prepare(request)
-    trace('socket.connected', role=role, tabId=key[1])
+    trace('socket.connected', role=role, tabId=key[1], frontendBuild=request.query.get('frontend_build', 'unknown'))
     tasks = set()
     async def command(payload):
         try:
@@ -179,8 +179,10 @@ async def anim_bridge_events(request):
                         stage = payload.get('stage')
                         if stage in ('command.received', 'command.started', 'tab.loading', 'tab.ready',
                                      'inputs.applying', 'inputs.applied', 'run.started', 'run.received',
-                                     'command.finished', 'command.failed', 'command.cancelled'):
+                                     'command.finished', 'command.failed', 'command.cancelled',
+                                     'socket.ready', 'message.failed', 'frontend.error'):
                             trace('browser.' + stage, tabId=key[1],
+                                  frontendBuild=str(payload.get('frontendBuild') or 'unknown'),
                                   requestId=str(payload.get('requestId') or ''),
                                   promptId=str(payload.get('promptId') or ''),
                                   error=str(payload.get('error') or ''))

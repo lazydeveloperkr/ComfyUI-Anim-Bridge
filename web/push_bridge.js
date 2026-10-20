@@ -1,7 +1,7 @@
-import { CommandQueue, EditorOperations } from './command_queue.js'
-import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js'
-import { applySemanticInputs } from './semantic_inputs.js'
-import { trace as consoleTrace } from './bridge_logging.js'
+import { CommandQueue, EditorOperations } from './command_queue.js?v=13-diag2'
+import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-diag2'
+import { applySemanticInputs } from './semantic_inputs.js?v=13-diag2'
+import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-diag2'
 
 export function workflowMetadata(store) {
   return (store.openWorkflows || []).map(workflow => ({
@@ -62,7 +62,24 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
     }
     const active = () => state === scope && !stopped
     const send = payload => { if (active() && scope.socket?.readyState === 1) scope.socket.send(JSON.stringify(payload)) }
-    const trace = (stage, fields) => send({ event: 'diagnostic', ...consoleTrace(stage, fields) })
+    const trace = (stage, fields) => {
+      const entry = consoleTrace(stage, fields)
+      try { send({ event: 'diagnostic', ...entry }) } catch { /* Preserve command error handling if diagnostics cannot send. */ }
+    }
+    const reportError = error => trace('frontend.error', {
+      requestId: scope.queue?.running?.command?.requestId,
+      error: String(error?.message || error),
+    })
+    const onError = event => {
+      if (/anim_bridge|push_bridge|command_queue|semantic_inputs|input_contract|bridge_logging/.test(event.filename || '')) reportError(event.error || event.message)
+    }
+    const onRejection = event => {
+      if (/anim_bridge|push_bridge|command_queue|semantic_inputs|input_contract|bridge_logging/.test(String(event.reason?.stack || ''))) reportError(event.reason)
+    }
+    windowImpl.addEventListener('error', onError)
+    windowImpl.addEventListener('unhandledrejection', onRejection)
+    scope.removers.push(() => windowImpl.removeEventListener('error', onError),
+      () => windowImpl.removeEventListener('unhandledrejection', onRejection))
     const publish = () => {
       if (!active() || scope.socket?.readyState !== 1) return
       const workflows = workflowMetadata(store), serialized = JSON.stringify(workflows)
@@ -77,7 +94,7 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
       if (!active()) return
       const url = new URL(api.apiURL('/anim_bridge/v1/events'), windowImpl.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
-      url.search = new URLSearchParams({ role: 'browser', session_id: sessionId, tab_id: tabId })
+      url.search = new URLSearchParams({ role: 'browser', session_id: sessionId, tab_id: tabId, frontend_build: FRONTEND_BUILD })
       const socket = scope.socket = new WebSocketImpl(url)
       const current = () => active() && scope.socket === socket && socket.readyState === 1
       const seen = new Set()
@@ -91,15 +108,28 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
         }
       }, { schedule, unschedule })
       socket.onopen = () => { if (current()) { consoleTrace('socket.connected'); scope.attempt = 0; scope.previous = ''; publish() } }
-      socket.onmessage = message => {
+      socket.onmessage = async message => {
         if (!current()) return
         let command
-        try { command = JSON.parse(message.data) } catch { return }
-        if (command.event === 'cancel') { trace('command.cancelled', { requestId: command.requestId }); queue.cancel(command.requestId); return }
-        if (command.event !== 'command' || !command.requestId || seen.has(command.requestId)) return
-        trace('command.received', { requestId: command.requestId })
-        seen.add(command.requestId); if (seen.size > 128) seen.delete(seen.values().next().value)
-        queue.enqueue(command)
+        try {
+          const data = typeof message.data === 'string' ? message.data
+            : typeof message.data?.text === 'function' ? await message.data.text()
+            : new TextDecoder().decode(message.data)
+          if (!current()) return
+          command = JSON.parse(data)
+          if (!command || typeof command !== 'object') throw new Error('Invalid Bridge message object')
+          if (command.event === 'ready') { trace('socket.ready'); return }
+          if (command.event === 'cancel') { trace('command.cancelled', { requestId: command.requestId }); queue.cancel(command.requestId); return }
+          if (command.event !== 'command' || !command.requestId || seen.has(command.requestId)) return
+          trace('command.received', { requestId: command.requestId })
+          seen.add(command.requestId); if (seen.size > 128) seen.delete(seen.values().next().value)
+          queue.enqueue(command)
+        } catch (error) {
+          trace('message.failed', { requestId: command?.requestId, error: String(error) })
+          if (current() && command?.event === 'command' && command.requestId) {
+            send({ event: 'result', requestId: command.requestId, error: String(error) })
+          }
+        }
       }
       socket.onerror = () => { consoleTrace('socket.error'); socket.close() }
       socket.onclose = () => {

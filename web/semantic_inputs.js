@@ -1,4 +1,4 @@
-import { applyInputValues, declaredInputs } from './input_contract.js'
+import { applyInputValues, declaredInputs } from './input_contract.js?v=13-diag2'
 
 // Inspect only the selected live editor, only when a request arrives. This is
 // a private input contract, never an executable prompt or a wire payload.
