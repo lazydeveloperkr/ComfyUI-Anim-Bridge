@@ -1,0 +1,18 @@
+<!doctype html><html lang="en"><meta charset="utf-8"><title>Bridge native browser timer smoke</title><style>body{font:18px system-ui;margin:40px;max-width:900px}pre{white-space:pre-wrap}</style><h1>Native browser command queue</h1><pre id="result">Running…</pre><script type="module">
+import { CommandQueue } from '../web/command_queue.js'
+const result=document.querySelector('#result')
+try {
+  let finishOld;const completed=[]
+  const queue=new CommandQueue(command=>command.commandId==='old'?new Promise(resolve=>finishOld=resolve):command.commandId,
+    (command,value,error)=>completed.push({id:command.commandId,value,error:String(error||'')}),{timeout:50})
+  queue.enqueue({commandId:'old'})
+  await new Promise(resolve=>setTimeout(resolve,10))
+  queue.cancel('old');queue.enqueue({commandId:'new'})
+  await new Promise(resolve=>setTimeout(resolve,10))
+  finishOld('late')
+  await new Promise(resolve=>setTimeout(resolve,10))
+  if(completed.length!==2||completed[1].value!=='new') throw Error(JSON.stringify(completed))
+  queue.close()
+  result.textContent='PASS: native setTimeout/clearTimeout, cancelled hung Promise, new request, ignored late result.\n'+JSON.stringify(completed,null,2)
+} catch(error) { result.textContent='FAIL: '+error.stack }
+</script></html>

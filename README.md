@@ -1,15 +1,20 @@
 # ComfyUI Anim Bridge
 
-ComfyUI Anim Bridge lets Anim discover the workflows that are currently open
-in the ComfyUI frontend. It reports each open tab, workflow revision, Builder
-User Inputs, and output nodes to the same ComfyUI server.
+Bridge 13 sends Anim the **name and opaque ID** of each open workflow.
+Anim sends that identity, a unique request ID, prompt and semantic arguments over
+a WebSocket. Bridge delivers frontend commands through ComfyUI's existing socket
+and `anim_bridge_command` API event, addressed to one native client, Bridge tab
+and connection. Metadata and receipts return through the Bridge socket. No
+additional socket is created for this native event. Bridge loads the selected tab, privately maps and validates inputs,
+verifies the actual widgets, and calls the tab's native Run action. Only a small
+receipt, completion/failure and output file descriptors return to Anim. Anim
+never receives the workflow graph or node bindings.
 
-It does not install a video model or run generation by itself. Anim uses it
-because the standard ComfyUI API does not expose the list of workflows open in
-browser tabs. Immediately before generation, the Bridge writes Anim's prompt
-and uploaded media file names into the mapped widgets in the selected open
-workflow. This makes the exact inputs visible in ComfyUI before Anim submits
-the same graph to `/prompt`.
+There is no periodic workflow conversion, graph hashing, command polling or task
+status polling. Models and generation settings stay in ComfyUI. Keep a ComfyUI
+browser or Desktop window open to accept requests. Once queued, completion is
+observed on the existing server dispatcher even if that window disconnects.
+Update Anim and Bridge together; the socket contract requires Bridge 13.
 
 ## Install in ComfyUI-Easy-Install on Windows
 
@@ -24,8 +29,14 @@ the same graph to `/prompt`.
 ```text
 ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   __init__.py
+  bridge_protocol.py
+  execution_events.py
   web\anim_bridge.js
+  web\push_bridge.js
+  web\semantic_inputs.js
+  web\command_queue.js
   web\input_contract.js
+  web\bridge_logging.js
 ```
 
 If Git is available, you can install it from a Windows terminal instead:
@@ -39,6 +50,51 @@ git clone https://github.com/lazydeveloperkr/ComfyUI-Anim-Bridge.git comfyui_ani
 
 Place this repository at `ComfyUI/custom_nodes/comfyui_anim_bridge`, restart
 ComfyUI, and reload every open ComfyUI browser tab.
+
+## Read Bridge diagnostics
+
+Restart ComfyUI after updating Python files, then reload the ComfyUI frontend
+to load its JavaScript changes. In the ComfyUI server console or Desktop server
+logs, search for `[Anim Bridge]`. Startup prints `server.loaded`; connections
+print `socket.connected` and `browser.connected`.
+
+A request prints `command.received`, `command.forward`, then browser stages
+`command.received`, `command.started`, `tab.ready`, `inputs.applying`,
+`inputs.applied`, `run.started`, `run.received`, followed by `command.receipt`,
+`execution.terminal` and `completion.send`. Match entries by `requestId`;
+`promptId` links native execution to its receipt. Errors print `command.failed`.
+Input-only commands stop after input application and never print `run.started`.
+The last printed stage identifies where the request stopped.
+
+For Windows ComfyUI EZ Desktop, use its existing ComfyUI server log view; no
+developer-tools shortcut is required. After updating, restart the ComfyUI server
+and fully close/reopen its frontend window. `socket.connected` for role browser
+should include `frontendBuild: "13-native1"`; `unknown` means the connected frontend
+has not loaded the diagnostic build. `browser.socket.ready` confirms that a
+server frame reached the frontend and its acknowledgment returned; transport
+`comfyui` confirms the native event path.
+`command.sent` confirms the server send finished. `browser.message.failed` and
+`browser.frontend.error` report decoding/handler errors that previously could
+leave the UI silent. These diagnostics locate the failure; they do not certify
+that the Windows video-generation problem is fixed.
+
+Native delivery requires a connected ComfyUI execution socket. Missing native
+client identity or a disconnected socket fails immediately rather than waiting
+30 seconds. Connection IDs reject stale events after Bridge reconnects; a
+bounded request-ID set rejects duplicate delivery. A status event updates native
+client identity after reconnection; there is no periodic status query.
+
+For an existing server that exposes ComfyUI's internal log endpoint, diagnostics
+can be read on demand from `/internal/logs/raw` without copying console text.
+This is a ComfyUI internal endpoint and availability depends on its version.
+Bridge does not add a remote-control endpoint or automatically poll these logs.
+
+Browser stages are also printed in the frontend developer tools Console, and
+forwarded over the existing Bridge socket to the server console. Before that
+socket connects, frontend startup/socket errors are visible only in developer
+tools (browser: F12 or Command-Option-J on macOS). No periodic logging or extra
+connection is added. Logs contain stage/identity/error summaries, never complete
+workflows, prompts, media contents or credential payloads.
 
 ## Prepare a workflow for Anim
 
@@ -72,14 +128,12 @@ Model, resolution, aspect ratio, frame count, FPS, sampler, seed, and output
 configuration stay in the ComfyUI workflow. Anim changes only the explicit
 Anim input node types above or legacy Builder User Inputs.
 
-When generation starts, Anim first opens the selected ComfyUI workflow tab and
-fills its mapped prompt, image, video, and audio widgets. `Anim Image
-References` redraws its ordered image cards from the received paths. Anim then
-reads the published workflow back and checks every mapped value. If any widget
-is missing or does not show the exact value, generation stops without sending
-the workflow to `/prompt`. Runtime prompt and reference values do not count as
-a workflow structure revision, so one Sequence's visible inputs do not make
-the next Sequence look stale.
+When a request arrives, Bridge finds the exact name and ID, opens the workflow
+through ComfyUI's native graph loader, maps semantic arguments to declared Anim
+inputs or Builder inputs, and reads back the widgets before Run. Missing roles,
+insufficient capacity and unsupported supplied media fail explicitly; references
+are never silently dropped. Input-only requests stop after verified application.
+The frontend performs no graph inspection or conversion while idle or listing.
 
 ### MiniMax H3 reference-to-video nodes
 
@@ -97,9 +151,8 @@ references. Other loaders, samplers, decoders, and output nodes do not change.
 
 The shared network Reference nodes accept and preserve up to 100 ordered file
 paths. The MiniMax H3 adapter enforces the model limits of 9 images, 3 videos,
-and 3 standalone audio references and never truncates extras. When connected,
-the Bridge reports those effective capacities to Anim so oversized requests
-are blocked before upload.
+and 3 standalone audio references and never truncates extras. Bridge validates
+those limits privately before Run; the workflow list remains name and ID only.
 
 ### MiniMax H3 hi-res reference-to-video workflow
 
@@ -184,9 +237,9 @@ ComfyUI filename and outputs IMAGE and MASK. Empty inputs output None and are
 cleared on every run. Missing files raise an error.
 
 Each image ID must be unique across both required and optional image node
-classes. Duplicate IDs block generation. The Bridge reports encoder socket
-positions as `promptToken`; Anim numbers only the filled sockets when composing
-the final prompt, matching Qwen's treatment of empty images.
+classes. Duplicate IDs block generation. Bridge discovers encoder socket
+positions privately and numbers only the filled sockets when composing the
+final prompt, matching Qwen's treatment of empty images.
 
 Legacy semantic image IDs remain accepted for compatibility with edit inputs.
 `image` is the required source of an image edit; `Anim Optional Image Input`
@@ -215,9 +268,9 @@ a dropdown with five values only:
 - `prompt`: the required image-edit instruction, for example “Make the sky
   warmer but keep every person unchanged.”
 
-Anim writes the text into the node's `text` STRING widget, and the node
-returns it unchanged. The Bridge publishes `slotId` and `duplicateSlotId` like
-the image input; two text nodes with the same role block generation. Keep
+Bridge writes the text into the node's `text` STRING widget, and the node
+returns it unchanged. Role discovery stays private in Bridge; two text nodes
+with the same role block generation. Keep
 `Anim Prompt Input` for workflows that take a single prompt.
 
 ### Qwen prompt compose contract
@@ -296,15 +349,38 @@ video, or audio file because that would silently change the generated result.
 
 ## Running a workflow from its tab
 
-Bridge 6 adds `POST /anim_bridge/v1/queue` with `sessionId`, `tabId`, and
-`workflowId`. The open ComfyUI tab runs the workflow through its own Run
-path (`app.queuePrompt`), exactly as if the Run button were pressed, and
-reports the queued prompt id. Anim reads it from
-`GET /anim_bridge/v1/command_result?command_id=...`, which answers
-`{"status": "pending"}` until the tab reports
-`{"status": "done", "promptId": "...", "error": ""}`. Anim uses this for image
-workflows so the prompt is the one ComfyUI itself builds, then reads the
-result from `/history`.
+Anim connects to `/anim_bridge/v1/events?role=anim`. The initial and changed
+workflow lists contain `{id, name}` only. A command is:
+
+```json
+{"event":"command","requestId":"unique","type":"run","id":"opaque","name":"Workflow","parameters":{"prompt":"A scene","durationSeconds":5,"filenamePrefix":"S001_Scene","imageReferences":[],"videoReferences":[],"audioReferences":[]}}
+```
+
+Image requests use scene/appearance text, dimensions and semantic image roles.
+`type: apply` verifies the widgets without running. Successful application returns
+`{event: result, requestId, applied: true}`; a run also returns `promptId`.
+Completion is `{event: completed, requestId, promptId, error, files}`. File
+entries contain only filename, subfolder, type and optional format. Anim downloads
+the indicated files through ComfyUI's normal view route.
+
+`execution_events.py` chains the existing `PromptServer.send_sync` dispatcher,
+leaving all original events and return values untouched. Only terminal execution
+notifications for active Bridge requests are handed to the server event loop.
+Output/status projection uses `get_history(map_function=...)` once on completion,
+without deep-copying the prompt graph. There is no extra execution WebSocket,
+no browser-side execution JSON parser, and no repeated history/queue request.
+
+Requests expire after 30 seconds. Pending command queues, active tasks and
+terminal-result caches are bounded. Cancellation releases queue slots; stale
+completion cannot complete a newer request. Uncancellable native mutations hold
+an editor lease and reject newer mutations promptly until they settle. A socket
+reconnection never replays a command; `watch` can recover active or recently
+completed prompt IDs. Unknown IDs return an explicit tracking error. Browser
+pagehide/pageshow handles BFCache restoration with a fresh socket and queue.
+
+The former publish/commands/command_result/apply/queue/load_sample HTTP command
+routes are removed. Health and the explicit lightweight sample/list requests
+remain available.
 
 ## Media input capacity
 
@@ -366,14 +442,13 @@ Required models: `qwen_image_2.1_int8_convrot.safetensors`,
 
 ### Anim generation modes
 
-With Bridge 11, Anim reads image samples directly from this installed custom
-node's `workflows/` folder. Select ComfyUI in Anim, reload the list, and choose an
-installed sample. You do not need to open that sample beforehand. Keep one
-ComfyUI browser with the Bridge enabled open: it imports the sample as a new
-workflow and shares the resulting executable graph. Existing tabs and edits stay
-intact. The picker also includes workflows already open in ComfyUI. Only installed
-image samples with an Anim scene input are cataloged; raw and video examples are
-not image-generation choices.
+Bridge 13 lists installed image templates from an explicit filename allowlist,
+without opening or parsing their graphs. This includes the existing
+`qwen21_firstframe_anim.json` preset. Keep one ComfyUI frontend with Bridge enabled
+open: the selected sample is read on request, imported as a new workflow and run
+inside ComfyUI. Its graph never crosses to Anim. Existing tabs and files remain
+intact. Open workflows are also selectable; Bridge validates the selected
+workflow only when a request arrives.
 
 | Template | Inputs |
 | --- | --- |
@@ -390,15 +465,31 @@ workflow to change generation mode. Remove references explicitly when switching
 to a text-only workflow; Anim never discards them automatically.
 
 
-### Installed sample API (Bridge 11)
+### Installed sample API (Bridge 13)
 
-- `GET /anim_bridge/v1/samples`: image sample catalog from this extension's local
-  workflows folder, available without browser sessions.
-- `POST /anim_bridge/v1/load_sample` with an allowlisted `workflowId`: queues an
-  import to the most recently active live Bridge browser. It returns command,
-  session and tab IDs. A browser is required for import/execution, not listing.
-- `command_result` returns the imported `workflowId` or a load error. The app
-  waits for its published graph before allowing generation.
+- `GET /anim_bridge/v1/samples` returns `{id, name}` entries only and does not
+  require a browser session or read graphs.
+- A normal socket `run`/`apply` command can select an allowlisted `anim-sample/`
+  ID and its exact filename. A live frontend is required to import it.
+- The sample is loaded with ComfyUI's normal new-workflow loader; original files
+  and existing tabs are preserved. Graphs are private to the server/frontend.
 
-Imports use ComfyUI's normal new-workflow loader and fresh graph IDs; original
-sample files and existing browser workflows are not overwritten.
+## Verification
+
+`npm test` covers semantic mapping, native tab selection, bounds, stale work and
+BFCache restoration. `python3 -m unittest discover -s test -p 'test*.py'` covers
+nodes, sample compatibility, RPC correlation and the native completion observer.
+
+For a real no-model Desktop check, opt in to
+`test/fixtures/custom_nodes/anim_bridge_smoke` under ComfyUI custom_nodes, open
+`test/fixtures/bridge_reference_smoke.json` in Desktop and save it as
+`bridge_native_reference_smoke`. Run with ComfyUI's Python environment:
+
+```sh
+python test/desktop_smoke.py --count 30 --idle-seconds 1800
+```
+
+The probe checks request/prompt/file pairing, actual downloaded image pixels,
+duplicate rejection and strict workflow identity. The fixture is never installed
+by Bridge itself. It requires no model or paid API. GPU model generation and
+Windows memory usage require separate platform/model validation.
