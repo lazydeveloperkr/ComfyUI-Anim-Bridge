@@ -424,6 +424,14 @@ sample files and existing browser workflows are not overwritten.
 ### Testing and remaining runtime acceptance
 
 Run `npm test` and `python3 -m unittest discover -s test -p 'test_*.py'`.
+Serve this directory locally and open `test/browser_command_queue.html` in a
+browser to check real native timer completion, timeout, cancellation and cleanup.
+The page must report `PASS: native browser timers`. Node's timer functions do not
+enforce the browser receiver restriction, so Node-only mocks previously missed
+an `Illegal invocation` that prevented every command from starting. The command
+queue now invokes captured timer functions without using the queue as their
+receiver. Update the installed Bridge and reload ComfyUI browser pages to apply
+this frontend fix; already-open pages retain the previous module until reloaded.
 Tests cover metadata-only idle paths, command IDs, duplicate/out-of-order events,
 timeout/disconnect cleanup, reconnect without replay, multi-tab ownership,
 selected-only conversion, readback and native prompt identity. Regressions also

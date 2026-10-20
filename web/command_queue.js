@@ -2,7 +2,11 @@
 // cancelled operation cannot release or complete a newer operation's slot.
 export class CommandQueue {
   constructor(execute, complete, { schedule = setTimeout, unschedule = clearTimeout, timeout = 30000 } = {}) {
-    Object.assign(this, { execute, complete, schedule, unschedule, timeout })
+    Object.assign(this, { execute, complete, timeout })
+    // Browser timer functions reject a CommandQueue receiver (Illegal invocation).
+    // Invoke the captured functions without turning them into queue methods.
+    this.schedule = (callback, delay) => schedule(callback, delay)
+    this.unschedule = (timer) => unschedule(timer)
     this.jobs = new Map()
     this.pending = []
     this.running = null
