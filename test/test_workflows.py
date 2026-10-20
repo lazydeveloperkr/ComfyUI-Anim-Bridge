@@ -70,6 +70,52 @@ class Krea2GroundedEncodeValuesTest(unittest.TestCase):
         self.assertGreater(checked, 0)
 
 
+FIXTURES = pathlib.Path(__file__).parent / 'fixtures'
+
+
+class BridgeSmokeFixtureTest(unittest.TestCase):
+    """The smoke workflows must stay CPU-only editor files that ComfyUI can open."""
+
+    STOCK = {'LoadImage', 'SaveImage', 'StringConcatenate', 'StringSubstring'}
+    ANIM = {'AnimTextInput', 'AnimPromptInput', 'AnimDurationInput', 'AnimSequenceOutput'}
+
+    def load(self, name):
+        return json.loads((FIXTURES / 'workflows' / name).read_text(encoding='utf-8'))
+
+    def test_fixtures_are_editor_workflows_with_consistent_links(self):
+        for path in (FIXTURES / 'workflows').glob('*.json'):
+            workflow = json.loads(path.read_text(encoding='utf-8'))
+            # Saved from the ComfyUI editor, not an API prompt.
+            self.assertIn('nodes', workflow, path.name)
+            self.assertIn('links', workflow, path.name)
+            nodes = {node['id']: node for node in workflow['nodes']}
+            for link_id, source, _, target, slot, _type in workflow['links']:
+                self.assertIn(source, nodes, path.name)
+                self.assertEqual(nodes[target]['inputs'][slot]['link'], link_id, path.name)
+
+    def test_fixtures_need_no_model_or_gpu(self):
+        allowed = self.STOCK | self.ANIM | {'AnimBridgeTestDelay'}
+        for path in (FIXTURES / 'workflows').glob('*.json'):
+            types = {node['type'] for node in self.load(path.name)['nodes']}
+            self.assertLessEqual(types, allowed, path.name)
+            self.assertIn('LoadImage', types)
+            self.assertIn('SaveImage', types)
+
+    def test_image_and_storyboard_inputs_reach_the_saved_file_name(self):
+        image = {node['type']: node for node in self.load('bridge_cpu_smoke.json')['nodes']}
+        self.assertEqual(image['AnimTextInput']['widgets_values'][0], 'prompt')
+        storyboard = {node['type'] for node in self.load('bridge_storyboard_cpu_smoke.json')['nodes']}
+        self.assertTrue({'AnimPromptInput', 'AnimDurationInput', 'AnimSequenceOutput'} <= storyboard)
+        delay = {node['type']: node for node in self.load('bridge_storyboard_delay_smoke.json')['nodes']}
+        self.assertEqual(delay['AnimBridgeTestDelay']['widgets_values'], [60])
+
+    def test_smoke_assets_ship_as_tests_not_as_user_samples(self):
+        self.assertTrue((FIXTURES / 'assets' / 'bridge_smoke.png').read_bytes().startswith(b'\x89PNG'))
+        init = (pathlib.Path(__file__).parents[1] / '__init__.py').read_text(encoding='utf-8')
+        self.assertNotIn('bridge_cpu_smoke', init)
+        self.assertNotIn('AnimBridgeTestDelay', init)
+
+
 if __name__ == '__main__':
     unittest.main()
 

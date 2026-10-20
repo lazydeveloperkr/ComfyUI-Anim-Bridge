@@ -64,9 +64,15 @@ class PushProtocolTest(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(self.bridge.pending)
 
     async def test_timeout_and_owner_cancellation_release_waiters(self):
-        with self.assertRaises(asyncio.TimeoutError):
-            await self.bridge.command(self.owner, self.command(), lambda _: None, timeout=.001)
+        task = asyncio.create_task(self.bridge.command(self.owner, self.command(), lambda _: None, timeout=.05))
+        await asyncio.sleep(0)
+        self.bridge.ack(self.browser, {'commandId': 'c'})
+        with self.assertRaises(asyncio.TimeoutError) as raised:
+            await task
+        # Anim shows this text; an empty message would hide the cause.
+        self.assertIn('did not finish', str(raised.exception))
         self.assertFalse(self.bridge.pending)
+        self.assertFalse(self.bridge.acks)
         task = asyncio.create_task(self.bridge.command(self.owner, self.command(), lambda _: None))
         await asyncio.sleep(0)
         task.cancel()
@@ -153,6 +159,40 @@ class PushProtocolTest(unittest.IsolatedAsyncioTestCase):
             await task
         await self.bridge.track(Socket(), ['extra'])
         self.assertEqual(len(self.bridge.tracked_ids()), 256)
+
+    async def test_unacknowledged_command_disconnects_the_tab_with_a_clear_error(self):
+        with self.assertRaisesRegex(ConnectionError, 'did not receive the command'):
+            await self.bridge.command(self.owner, self.command(), lambda _: None, ack_timeout=.01)
+        # The dead tab is no longer listed, so Anim cannot select it again.
+        self.assertTrue(self.browser.closed)
+        self.assertEqual(self.bridge.metadata(), [])
+        self.assertFalse(self.bridge.pending)
+        self.assertFalse(self.bridge.acks)
+
+    async def test_acknowledgement_from_another_connection_is_ignored(self):
+        with self.assertRaises(ConnectionError):
+            task = asyncio.create_task(self.bridge.command(self.owner, self.command(), lambda _: None, ack_timeout=.01))
+            await asyncio.sleep(0)
+            self.bridge.ack(Socket(), {'commandId': 'c'})
+            await task
+
+    async def test_acknowledged_command_waits_for_its_result(self):
+        task = asyncio.create_task(self.bridge.command(self.owner, self.command(), lambda _: None, ack_timeout=.01))
+        await asyncio.sleep(0)
+        self.bridge.ack(self.browser, {'commandId': 'c'})
+        await asyncio.sleep(.03)
+        self.assertFalse(task.done())
+        self.assertFalse(self.browser.closed)
+        self.bridge.result(self.browser, {'commandId': 'c', 'snapshot': {}})
+        self.assertEqual((await task)['commandId'], 'c')
+
+    async def test_tab_running_an_older_script_is_refused_before_dispatch(self):
+        stale = Socket()
+        await self.bridge.attach(('s', 'old'), stale, 0)
+        await self.bridge.publish(('s', 'old'), stale, [{'workflowId': 'w'}])
+        with self.assertRaisesRegex(ConnectionError, 'older Anim Bridge script'):
+            await self.bridge.command(self.owner, self.command(tabId='old'), lambda _: None)
+        self.assertEqual([m for m in stale.messages if m['event'] == 'command'], [])
 
 
 if __name__ == '__main__':

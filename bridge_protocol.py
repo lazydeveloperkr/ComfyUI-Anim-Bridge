@@ -1,6 +1,25 @@
 """Connection-owned metadata and bounded RPC. No graph/result cache or timers at idle."""
 import asyncio
+import logging
+import time
 import uuid
+
+log = logging.getLogger('anim_bridge')
+
+# The browser script version that acknowledges every command on receipt.
+# A tab still running an older script cannot acknowledge and must be reloaded.
+BROWSER_CLIENT_VERSION = 13
+# A live tab acknowledges within milliseconds; only a dead or stale page misses this.
+ACK_TIMEOUT = 5
+# Shorter than Anim's 30 s wait so Anim receives this explanation instead of
+# its own bare timeout.
+COMMAND_TIMEOUT = 25
+STALE_TAB = ('This ComfyUI tab is running an older Anim Bridge script. '
+             'Reload the ComfyUI tab, then select the workflow again in Anim.')
+UNRESPONSIVE_TAB = ('The ComfyUI tab did not receive the command. It was disconnected; '
+                    'reload the ComfyUI tab, then select the workflow again in Anim.')
+SLOW_COMMAND = ('The ComfyUI tab received the command but did not finish it within '
+                f'{COMMAND_TIMEOUT} seconds. Reload the ComfyUI tab and try again.')
 
 
 class PushBridge:
@@ -10,6 +29,7 @@ class PushBridge:
         self.pending = {}
         self.subscriptions = {}
         self.queue_commands = set()
+        self.acks = {}
 
     def metadata(self):
         return [item for browser in self.browsers.values()
@@ -33,21 +53,36 @@ class PushBridge:
             for item in workflows[:256] if isinstance(item, dict) and item.get('workflowId')
         ]
 
-    async def attach(self, key, socket):
+    async def attach(self, key, socket, client=BROWSER_CLIENT_VERSION):
         previous = self.browsers.get(key)
         if previous:
-            await previous['socket'].close()
             await self.detach(key, previous['socket'])
-        self.browsers[key] = {'socket': socket, 'workflows': []}
+            await previous['socket'].close()
+        self.browsers[key] = {'socket': socket, 'workflows': [], 'client': client}
+        log.info('[Anim Bridge] browser tab connected session=%s tab=%s client=%s', key[0], key[1], client)
         await self.send_tracking(socket)
 
     async def detach(self, key, socket):
         if self.browsers.get(key, {}).get('socket') is not socket:
             return
         del self.browsers[key]
+        log.info('[Anim Bridge] browser tab disconnected session=%s tab=%s', key[0], key[1])
         for _, (owner, target, future) in list(self.pending.items()):
             if target is socket and not future.done():
                 future.set_exception(ConnectionError('ComfyUI browser disconnected'))
+
+    async def evict(self, key, socket):
+        """Drop a connection that stopped answering so it is no longer listed."""
+        await self.detach(key, socket)
+        try:
+            await socket.close()
+        except (ConnectionError, RuntimeError):
+            pass
+
+    def ack(self, socket, payload):
+        waiting = self.acks.get(payload.get('commandId'))
+        if waiting and waiting[0] is socket and not waiting[1].done():
+            waiting[1].set_result(True)
 
     def result(self, socket, payload):
         pending = self.pending.get(payload.get('commandId'))
@@ -59,7 +94,7 @@ class PushBridge:
                 self.subscriptions.setdefault(pending[0], set()).add(prompt_id)
             pending[2].set_result(payload)
 
-    async def command(self, owner, payload, samples, timeout=30):
+    async def command(self, owner, payload, samples, timeout=COMMAND_TIMEOUT, ack_timeout=ACK_TIMEOUT):
         command_id = str(payload.get('commandId') or '')
         if not command_id or command_id in self.pending:
             raise ValueError('Missing or duplicate command ID')
@@ -99,20 +134,43 @@ class PushBridge:
             item['workflowId'] == payload.get('workflowId') for item in browser['workflows']
         )):
             raise ConnectionError('The selected workflow tab is not available')
+        if browser.get('client', 0) < BROWSER_CLIENT_VERSION:
+            raise ConnectionError(STALE_TAB)
         command = {name: payload[name] for name in
                    ('commandId', 'type', 'workflowId', 'inputs') if name in payload}
         command.update(sessionId=key[0], tabId=key[1])
         if sample is not None:
             command.update(sample={**sample, 'id': str(uuid.uuid4())},
                            sampleName=payload['workflowId'].split('/', 1)[1])
-        future = asyncio.get_running_loop().create_future()
+        loop = asyncio.get_running_loop()
+        future = loop.create_future()
+        received = loop.create_future()
         target = browser['socket']
         self.pending[command_id] = (owner, target, future)
+        self.acks[command_id] = (target, received)
         if command_type == 'queuePrompt': self.queue_commands.add(command_id)
+        started = time.monotonic()
         try:
             await target.send_json({'event': 'command', **command})
-            return await asyncio.wait_for(future, timeout)
-        except (asyncio.CancelledError, asyncio.TimeoutError):
+            log.info('[Anim Bridge] command %s %s sent to tab=%s', command_id, command_type, key[1])
+            await asyncio.wait({received, future}, timeout=min(ack_timeout, timeout),
+                               return_when=asyncio.FIRST_COMPLETED)
+            if not received.done() and not future.done():
+                log.warning('[Anim Bridge] command %s: tab=%s did not acknowledge; disconnecting it',
+                            command_id, key[1])
+                await self.evict(key, target)
+                raise ConnectionError(UNRESPONSIVE_TAB)
+            remaining = max(0, timeout - (time.monotonic() - started))
+            try:
+                result = await asyncio.wait_for(future, remaining)
+            except asyncio.TimeoutError:
+                log.warning('[Anim Bridge] command %s %s timed out after %.1fs on tab=%s',
+                            command_id, command_type, time.monotonic() - started, key[1])
+                raise asyncio.TimeoutError(SLOW_COMMAND) from None
+            log.info('[Anim Bridge] command %s %s finished in %.3fs', command_id, command_type,
+                     time.monotonic() - started)
+            return result
+        except (asyncio.CancelledError, asyncio.TimeoutError, ConnectionError):
             try:
                 await target.send_json({'event': 'cancel', 'commandId': command_id})
             except (ConnectionError, RuntimeError):
@@ -120,6 +178,7 @@ class PushBridge:
             raise
         finally:
             self.pending.pop(command_id, None)
+            self.acks.pop(command_id, None)
             self.queue_commands.discard(command_id)
 
     async def cancel(self, owner, command_id):
