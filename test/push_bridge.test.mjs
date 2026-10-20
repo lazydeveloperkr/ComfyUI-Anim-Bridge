@@ -83,8 +83,8 @@ test('only explicit inspection converts the selected workflow; apply returns min
   const workflow = { path: 'w', filename: 'W', activeState: {} }
   const app = { extensionManager: { workflow: {
     openWorkflows: [workflow, { path: 'other', get activeState() { throw new Error('unrelated graph') } }],
-    openWorkflow: async () => {},
   } }, graph: { getNodeById: () => node },
+    async loadGraphData(state, clean, restore, target) { this.extensionManager.workflow.activeWorkflow = target },
     graphToPrompt: async () => { conversions++; return { output: { 1: { class_type: 'AnimPromptInput', inputs: { prompt: node.widgets[0].value } } } } } }
   const result = await executeCommand(app, {}, { type: 'applyInputs', workflowId: 'w', inputs: { '1.prompt': 'after' } })
   assert.deepEqual(result, { values: { '1.prompt': 'after' } })
@@ -123,7 +123,7 @@ function inspectionFixture() {
   const workflow = { path: 'selected', filename: 'Selected', activeState: {} }
   f.store.openWorkflows = [workflow]; f.store.activeWorkflow = workflow
   f.app.graph = {}
-  f.store.openWorkflow = async workflow => { f.store.activeWorkflow = workflow }
+  f.app.loadGraphData = async (state, clean, restore, workflow) => { f.store.activeWorkflow = workflow }
   f.sockets[0].open()
   return f
 }
@@ -160,7 +160,7 @@ test('cancel and timeout release the same connection queue while a read remains 
   f.timers.find(value => value.milliseconds === 30000).callback()
   deliver(f.sockets[0], refresh('D')); await tick()
   // Two unresolved native reads are the cap; failure is immediate, not a hang.
-  assert.match(f.sockets[0].messages.find(value => value.commandId === 'D').error, /Reload/)
+  assert.match(f.sockets[0].messages.find(value => value.event === 'result' && value.commandId === 'D').error, /Reload/)
   f.bridge.stop()
 })
 
@@ -168,7 +168,7 @@ test('non-cancellable editor mutation fails new commands promptly until actual c
   const f = inspectionFixture()
   let finish, opens = 0, reads = 0
   f.store.activeWorkflow = null
-  f.store.openWorkflow = workflow => { opens++; return new Promise(resolve => {
+  f.app.loadGraphData = (state, clean, restore, workflow) => { opens++; return new Promise(resolve => {
     finish = () => { f.store.activeWorkflow = workflow; resolve() }
   }) }
   f.app.graphToPrompt = async () => { reads++; return { output: {} } }
@@ -176,7 +176,7 @@ test('non-cancellable editor mutation fails new commands promptly until actual c
   deliver(f.sockets[0], { event: 'cancel', commandId: 'A' })
   deliver(f.sockets[0], refresh('B')); await tick()
   assert.equal(opens, 1); assert.equal(reads, 0)
-  assert.match(f.sockets[0].messages.find(value => value.commandId === 'B').error, /Reload/)
+  assert.match(f.sockets[0].messages.find(value => value.event === 'result' && value.commandId === 'B').error, /Reload/)
   finish(); await tick()
   assert.equal(reads, 0) // The cancelled A cannot continue into inspection.
   deliver(f.sockets[0], refresh('C')); await tick()
@@ -254,4 +254,106 @@ test('native dirty changes publish metadata without converting a graph', async (
   await tick()
   assert.equal(f.sockets.at(-1).messages.at(-1).workflows[0].isDirty, true)
   f.bridge.stop(); assert.equal(f.app.graph.onAfterChange, undefined)
+})
+
+test('every new command is acknowledged on receipt before it runs; duplicates are not', async () => {
+  const f = inspectionFixture()
+  f.app.graphToPrompt = () => new Promise(() => {})
+  deliver(f.sockets[0], refresh('A'))
+  // The receipt is sent synchronously, before the (stalled) inspection starts.
+  assert.deepEqual(f.sockets[0].messages.at(-1), { event: 'ack', commandId: 'A' })
+  deliver(f.sockets[0], refresh('A'))
+  assert.equal(f.sockets[0].messages.filter(value => value.event === 'ack').length, 1)
+  f.bridge.stop()
+})
+
+test('the browser connects with its script version so the server can refuse stale tabs', () => {
+  const urls = []
+  const f = fixture()
+  class Probe { constructor(url) { urls.push(String(url)) } close() {} }
+  const bridge = startPushBridge({ app: f.app, api: f.api, sessionId: 's', tabId: 't', WebSocketImpl: Probe,
+    windowImpl: { location: { href: 'http://localhost:8188' }, addEventListener() {}, removeEventListener() {} },
+    schedule: () => ({}), unschedule: () => {} })
+  assert.match(urls[0], /client=13/)
+  bridge.stop(); f.bridge.stop()
+})
+
+test('a command on a connection the page no longer uses closes it instead of being dropped silently', () => {
+  const f = fixture(); f.sockets[0].open()
+  f.windowEvents.get('pagehide')({ persisted: false })
+  // The page is suspended; the server must stop routing to this connection.
+  const old = f.sockets[0]
+  old.readyState = 1
+  old.onmessage({ data: JSON.stringify(refresh('X')) })
+  assert.equal(old.readyState, 3)
+  assert.equal(old.messages.filter(value => value.event === 'ack').length, 0)
+  f.bridge.stop()
+})
+
+test('a page that saw pagehide without unloading reconnects on focus; stop stays final', () => {
+  const f = fixture(); f.sockets[0].open()
+  f.windowEvents.get('pagehide')({ persisted: false })
+  assert.equal(f.sockets.length, 1)
+  f.windowEvents.get('focus')()
+  assert.equal(f.sockets.length, 2)
+  f.sockets[1].open()
+  assert.equal(f.sockets[1].messages[0].event, 'metadata')
+  f.windowEvents.get('focus')()
+  assert.equal(f.sockets.length, 2, 'an open connection is never duplicated')
+  const focus = f.windowEvents.get('focus')
+  f.bridge.stop(); focus()
+  assert.equal(f.sockets.length, 2)
+})
+
+test('a failing cleanup during close still schedules the reconnect', () => {
+  const f = fixture(); f.sockets[0].open()
+  f.api.removeEventListener = () => { throw new Error('cleanup failed') }
+  f.sockets[0].onmessage({ data: JSON.stringify({ event: 'tracking', promptIds: ['p'] }) })
+  assert.throws(() => f.sockets[0].close(), /cleanup failed/)
+  assert.equal(f.timers.length, 1)
+  f.timers.shift().callback()
+  assert.equal(f.sockets.length, 2)
+})
+
+test('ComfyUI status events never open a duplicate connection while one is open or pending', () => {
+  const f = fixture(); f.sockets[0].open()
+  f.listeners.get('status')()
+  assert.equal(f.sockets.length, 1)
+  f.sockets[0].close()
+  f.listeners.get('status')()
+  assert.equal(f.sockets.length, 1, 'the scheduled retry owns the reconnect')
+  f.timers.shift().callback()
+  assert.equal(f.sockets.length, 2)
+  f.bridge.stop()
+})
+
+test('switching to the selected tab loads its graph before inspection, never the previous graph', async () => {
+  const previous = { path: 'previous', activeState: { nodes: ['previous'] } }
+  const selected = { path: 'selected', activeState: { nodes: ['selected'] }, isLoaded: false,
+    async load() { this.isLoaded = true } }
+  const store = { openWorkflows: [previous, selected], activeWorkflow: previous,
+    // The store alone marks a tab active but keeps the old canvas graph.
+    async openWorkflow(workflow) { store.activeWorkflow = workflow } }
+  const loads = []
+  const app = { extensionManager: { workflow: store }, graph: { name: 'previous' },
+    async loadGraphData(state, clean, restore, workflow) {
+      loads.push(state); app.graph = { name: workflow.path }; store.activeWorkflow = workflow
+    },
+    async graphToPrompt() { return { output: { graph: { class_type: app.graph.name, inputs: {} } } } } }
+  const result = await executeCommand(app, {}, { type: 'refresh', workflowId: 'selected', commandId: 'c' })
+  assert.equal(selected.isLoaded, true)
+  assert.deepEqual(loads, [{ nodes: ['selected'] }])
+  assert.equal(result.snapshot.apiGraph.graph.class_type, 'selected')
+})
+
+test('a tab switch that ComfyUI refuses fails the command instead of using another graph', async () => {
+  const previous = { path: 'previous', activeState: {} }
+  const selected = { path: 'selected', activeState: {} }
+  const store = { openWorkflows: [previous, selected], activeWorkflow: previous }
+  let reads = 0
+  const app = { extensionManager: { workflow: store }, graph: {},
+    async loadGraphData() { return false }, async graphToPrompt() { reads++; return { output: {} } } }
+  await assert.rejects(executeCommand(app, {}, { type: 'refresh', workflowId: 'selected', commandId: 'c' }),
+    /could not switch/)
+  assert.equal(reads, 0)
 })

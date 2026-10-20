@@ -100,7 +100,9 @@ async def anim_bridge_events(request):
     key = (request.query.get('session_id', ''), request.query.get('tab_id', ''))
     if role not in ('browser', 'anim') or (role == 'browser' and not all(key)):
         return _json({'error': 'A valid role and browser identity are required'}, 400)
-    socket = web.WebSocketResponse(max_msg_size=32 * 1024 * 1024)
+    # Protocol-level ping/pong drops a half-open connection (sleep, network
+    # change) instead of listing a tab that can no longer receive commands.
+    socket = web.WebSocketResponse(max_msg_size=32 * 1024 * 1024, heartbeat=20)
     await socket.prepare(request)
     tasks = set()
 
@@ -110,11 +112,17 @@ async def anim_bridge_events(request):
             await socket.send_json({'event': 'result', **result})
         except Exception as error:
             if not socket.closed:
+                # Never send an empty error: Anim would treat it as success.
+                message = str(error) or type(error).__name__
                 await socket.send_json({'event': 'result',
-                                        'commandId': payload.get('commandId'), 'error': str(error)})
+                                        'commandId': payload.get('commandId'), 'error': message})
 
     if role == 'browser':
-        await _push.attach(key, socket)
+        try:
+            client = int(request.query.get('client', '0'))
+        except ValueError:
+            client = 0
+        await _push.attach(key, socket, client)
     else:
         _push.clients.add(socket)
     await socket.send_json({'event': 'ready', 'bridgeVersion': 12})
@@ -129,6 +137,8 @@ async def anim_bridge_events(request):
             if role == 'browser':
                 if event == 'metadata':
                     await _push.publish(key, socket, payload.get('workflows') or [])
+                elif event == 'ack':
+                    _push.ack(socket, payload)
                 elif event == 'result':
                     _push.result(socket, payload)
                 elif event == 'executionDisconnected':

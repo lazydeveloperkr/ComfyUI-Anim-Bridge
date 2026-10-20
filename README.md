@@ -16,6 +16,13 @@ browser tabs. Older Bridge versions do not receive a polling fallback. After a
 browser page reload, refresh Anim's list and reselect the live tab. IDs are unique
 per document so duplicated browser tabs cannot steal each other's commands.
 
+Every browser tab acknowledges a command as soon as it arrives. A tab that does
+not (its page stopped, the connection died, or it still runs an older script)
+is removed from the list within about 5 seconds and Anim shows "reload the
+ComfyUI tab" instead of waiting 30 seconds. A tab whose connection drops
+reconnects by itself. The ComfyUI log prints `[Anim Bridge]` lines for each
+tab connection and command; see `test/README.md` for CPU-only smoke workflows.
+
 ## Install in ComfyUI-Easy-Install on Windows
 
 1. Close ComfyUI and EZi Desktop.
