@@ -885,5 +885,21 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertTrue(any(link[1] == 17 and link[3] == 18 and link[4] == 0 for link in workflow['links']))
 
 
+
+class ModuleImportsTest(unittest.TestCase):
+    """A module used only inside a rarely called method fails at run time, not import."""
+
+    def test_every_standard_module_used_in_init_is_imported(self):
+        import ast
+        tree = ast.parse((pathlib.Path(__file__).parents[1] / '__init__.py').read_text(encoding='utf-8'))
+        imported = {alias.asname or alias.name.split('.')[0]
+                    for node in ast.walk(tree) if isinstance(node, (ast.Import, ast.ImportFrom))
+                    for alias in node.names}
+        used = {node.value.id for node in ast.walk(tree)
+                if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name)}
+        for module_name in ('copy', 'json', 're', 'uuid', 'asyncio', 'pathlib'):
+            if module_name in used:
+                self.assertIn(module_name, imported, f'{module_name} is used but not imported')
+
 if __name__ == '__main__':
     unittest.main()
