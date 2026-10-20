@@ -1,0 +1,40 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Anim Bridge native browser timer regression</title>
+<h1 id="status">Running native browser timer regression</h1>
+<pre id="detail"></pre>
+<script type="module">
+import { CommandQueue } from '../web/command_queue.js'
+const check = (value, message) => { if (!value) throw new Error(message) }
+try {
+  await new Promise((resolve, reject) => {
+    const queue = new CommandQueue(async () => 'completed', (_, value, error) => {
+      if (error) reject(error)
+      else { check(value === 'completed', 'Missing completion result'); resolve() }
+    })
+    queue.enqueue({ commandId: 'native-complete' })
+  })
+  await new Promise((resolve, reject) => {
+    const queue = new CommandQueue(() => new Promise(() => {}), (_, value, error) => {
+      if (!String(error).includes('timed out')) reject(new Error('Missing timeout result'))
+      else resolve()
+    }, { timeout: 5 })
+    queue.enqueue({ commandId: 'native-timeout' })
+  })
+  let cancelled = false
+  const queue = new CommandQueue(() => new Promise(() => {}), (_, value, error) => {
+    check(String(error).includes('cancelled'), 'Missing cancellation result')
+    cancelled = true
+  })
+  queue.enqueue({ commandId: 'native-cancel' })
+  queue.cancel('native-cancel')
+  check(cancelled, 'Cancellation did not complete')
+  queue.enqueue({ commandId: 'native-close' })
+  queue.close()
+  document.querySelector('#status').textContent = 'PASS: native browser timers'
+  document.querySelector('#detail').textContent = 'Command completion, timeout, cancellation and disposal passed with native setTimeout/clearTimeout.'
+} catch (error) {
+  document.querySelector('#status').textContent = 'FAIL: native browser timers'
+  document.querySelector('#detail').textContent = error.stack || String(error)
+}
+</script>
