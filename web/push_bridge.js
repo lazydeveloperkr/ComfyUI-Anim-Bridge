@@ -1,7 +1,7 @@
-import { CommandQueue, EditorOperations } from './command_queue.js?v=13-diag2'
-import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-diag2'
-import { applySemanticInputs } from './semantic_inputs.js?v=13-diag2'
-import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-diag2'
+import { CommandQueue, EditorOperations } from './command_queue.js?v=13-native1'
+import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-native1'
+import { applySemanticInputs } from './semantic_inputs.js?v=13-native1'
+import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-native1'
 
 export function workflowMetadata(store) {
   return (store.openWorkflows || []).map(workflow => ({
@@ -82,16 +82,21 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
       () => windowImpl.removeEventListener('unhandledrejection', onRejection))
     const publish = () => {
       if (!active() || scope.socket?.readyState !== 1) return
-      const workflows = workflowMetadata(store), serialized = JSON.stringify(workflows)
+      const workflows = workflowMetadata(store), comfyClientId = api.clientId || ''
+      const serialized = JSON.stringify({ workflows, comfyClientId })
       if (scope.previous === serialized) return
       scope.previous = serialized
-      send({ event: 'metadata', workflows })
+      send({ event: 'metadata', workflows, comfyClientId, bridgeConnectionId: scope.connectionId })
     }
+    // The native status event supplies/refreshes api.clientId after reconnect.
+    api.addEventListener('status', publish)
+    scope.removers.push(() => api.removeEventListener('status', publish))
     const actions = new Set(['attachWorkflow', 'openWorkflow', 'openWorkflowsInBackground', 'closeWorkflow',
       'renameWorkflow', 'deleteWorkflow', 'saveAs', 'saveWorkflow', 'createTemporary', 'createNewTemporary', 'syncWorkflows'])
     if (store.$onAction) scope.removers.push(store.$onAction(({ name, after }) => { if (actions.has(name)) after(publish) }, true))
     function connect() {
       if (!active()) return
+      const connectionId = scope.connectionId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`
       const url = new URL(api.apiURL('/anim_bridge/v1/events'), windowImpl.location.href)
       url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
       url.search = new URLSearchParams({ role: 'browser', session_id: sessionId, tab_id: tabId, frontend_build: FRONTEND_BUILD })
@@ -107,6 +112,31 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
           send({ event: 'result', requestId: command.requestId, ...(error ? { error: String(error) } : result) }); publish()
         }
       }, { schedule, unschedule })
+      const failedMessage = (command, error) => {
+        trace('message.failed', { requestId: command?.requestId, error: String(error) })
+        if (current() && command?.event === 'command' && command.requestId) {
+          send({ event: 'result', requestId: command.requestId, error: String(error) })
+        }
+      }
+      const receive = (command, transport) => {
+        if (!current()) return
+        if (!command || typeof command !== 'object') throw new Error('Invalid Bridge message object')
+        if (command.event === 'ready') { trace('socket.ready', { transport }); return }
+        if (command.event === 'cancel') { trace('command.cancelled', { requestId: command.requestId, transport }); queue.cancel(command.requestId); return }
+        if (command.event !== 'command' || !command.requestId || seen.has(command.requestId)) return
+        trace('command.received', { requestId: command.requestId, transport })
+        seen.add(command.requestId); if (seen.size > 128) seen.delete(seen.values().next().value)
+        queue.enqueue(command)
+      }
+      const nativeMessage = event => {
+        const command = event.detail
+        // Even if two frontends share a native client ID, only this tab runs it.
+        if (command?.bridgeSessionId !== sessionId || command?.bridgeTabId !== tabId || command?.bridgeConnectionId !== connectionId) return
+        try { receive(command, 'comfyui') } catch (error) { failedMessage(command, error) }
+      }
+      scope.nativeRemove?.()
+      api.addEventListener('anim_bridge_command', nativeMessage)
+      scope.nativeRemove = () => api.removeEventListener('anim_bridge_command', nativeMessage)
       socket.onopen = () => { if (current()) { consoleTrace('socket.connected'); scope.attempt = 0; scope.previous = ''; publish() } }
       socket.onmessage = async message => {
         if (!current()) return
@@ -117,18 +147,9 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
             : new TextDecoder().decode(message.data)
           if (!current()) return
           command = JSON.parse(data)
-          if (!command || typeof command !== 'object') throw new Error('Invalid Bridge message object')
-          if (command.event === 'ready') { trace('socket.ready'); return }
-          if (command.event === 'cancel') { trace('command.cancelled', { requestId: command.requestId }); queue.cancel(command.requestId); return }
-          if (command.event !== 'command' || !command.requestId || seen.has(command.requestId)) return
-          trace('command.received', { requestId: command.requestId })
-          seen.add(command.requestId); if (seen.size > 128) seen.delete(seen.values().next().value)
-          queue.enqueue(command)
+          receive(command, 'bridge')
         } catch (error) {
-          trace('message.failed', { requestId: command?.requestId, error: String(error) })
-          if (current() && command?.event === 'command' && command.requestId) {
-            send({ event: 'result', requestId: command.requestId, error: String(error) })
-          }
+          failedMessage(command, error)
         }
       }
       socket.onerror = () => { consoleTrace('socket.error'); socket.close() }
@@ -146,6 +167,7 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
     const old = state
     if (!old) return
     state = null; unschedule(old.retry); old.queue?.close()
+    old.nativeRemove?.()
     for (const remove of old.removers) remove?.()
     old.socket?.close()
   }

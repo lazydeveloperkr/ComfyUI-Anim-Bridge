@@ -41,7 +41,15 @@ def _completed_outputs(prompt_id):
     })
 
 
-_push = PushBridge(_completed_outputs)
+def _dispatch_browser(client_id, payload):
+    server = PromptServer.instance
+    # Never broadcast a command. Native client IDs identify one frontend socket.
+    if not client_id or client_id not in server.sockets:
+        raise ConnectionError('The selected ComfyUI execution socket disconnected. Reopen its frontend before retrying.')
+    server.send_sync('anim_bridge_command', payload, client_id)
+
+
+_push = PushBridge(_completed_outputs, _dispatch_browser)
 install_execution_observer(PromptServer.instance, _push)
 trace('server.loaded', bridgeVersion=13)
 
@@ -172,7 +180,8 @@ async def anim_bridge_events(request):
                 event = payload.get('event')
                 if role == 'browser':
                     if event == 'metadata':
-                        await _push.publish(key, socket, payload.get('workflows') or [])
+                        await _push.publish(key, socket, payload.get('workflows') or [],
+                                            payload.get('comfyClientId', ''), payload.get('bridgeConnectionId', ''))
                     elif event == 'result':
                         _push.result(socket, payload)
                     elif event == 'diagnostic':
@@ -183,6 +192,7 @@ async def anim_bridge_events(request):
                                      'socket.ready', 'message.failed', 'frontend.error'):
                             trace('browser.' + stage, tabId=key[1],
                                   frontendBuild=str(payload.get('frontendBuild') or 'unknown'),
+                                  transport=str(payload.get('transport') or ''),
                                   requestId=str(payload.get('requestId') or ''),
                                   promptId=str(payload.get('promptId') or ''),
                                   error=str(payload.get('error') or ''))

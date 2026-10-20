@@ -19,8 +19,9 @@ def trace(event, **fields):
 
 
 class PushBridge:
-    def __init__(self, history):
+    def __init__(self, history, dispatch_browser=None):
         self.history = history
+        self.dispatch_browser = dispatch_browser
         self.browsers = {}
         self.clients = set()
         self.pending = {}
@@ -54,16 +55,34 @@ class PushBridge:
         if old:
             await old['socket'].close()
             await self.detach(key, old['socket'])
-        self.browsers[key] = {'socket': socket, 'workflows': {}}
+        self.browsers[key] = {'socket': socket, 'workflows': {}, 'clientId': '', 'connectionId': ''}
 
-    async def publish(self, key, socket, workflows):
+    async def publish(self, key, socket, workflows, client_id='', connection_id=''):
         browser = self.browsers.get(key)
         if not browser or browser['socket'] is not socket:
             return
+        client_id = client_id if isinstance(client_id, str) and len(client_id) <= 256 else ''
+        changed_client = browser['clientId'] != client_id
+        browser['clientId'] = client_id
+        browser['connectionId'] = connection_id if isinstance(connection_id, str) and len(connection_id) <= 256 else ''
         browser['workflows'] = {str(w['workflowId']): str(w['name']) for w in workflows[:256]
                                 if isinstance(w, dict) and w.get('workflowId') and w.get('name')}
-        trace('workflows.received', tabId=key[1], count=len(browser['workflows']))
+        trace('workflows.received', tabId=key[1], count=len(browser['workflows']), nativeSocket=bool(client_id))
+        if changed_client and client_id and self.dispatch_browser:
+            try:
+                self.dispatch_browser(client_id, {'event': 'ready', 'bridgeSessionId': key[0], 'bridgeTabId': key[1], 'bridgeConnectionId': browser['connectionId']})
+            except (ConnectionError, RuntimeError) as error:
+                trace('native_socket.unavailable', tabId=key[1], error=str(error))
         await self.lists()
+
+    async def deliver(self, key, browser, payload):
+        if self.dispatch_browser:
+            client_id = browser['clientId']
+            if not client_id or not browser['connectionId']:
+                raise ConnectionError('ComfyUI execution socket is not ready. Update Bridge and reopen the ComfyUI frontend.')
+            self.dispatch_browser(client_id, {**payload, 'bridgeSessionId': key[0], 'bridgeTabId': key[1], 'bridgeConnectionId': browser['connectionId']})
+        else:
+            await browser['socket'].send_json(payload)
 
     async def detach(self, key, socket):
         if self.browsers.get(key, {}).get('socket') is not socket:
@@ -119,15 +138,19 @@ class PushBridge:
             self.seen.pop(next(iter(self.seen)))
         self.pending[request_id] = (owner, target, future)
         try:
-            trace('command.forward', requestId=request_id, tabId=key[1], command=kind)
-            await target.send_json({'event': 'command', 'requestId': request_id, 'commandId': request_id,
+            trace('command.forward', requestId=request_id, tabId=key[1], command=kind,
+                  transport='comfyui' if self.dispatch_browser else 'bridge')
+            await self.deliver(key, browser, {'event': 'command', 'requestId': request_id, 'commandId': request_id,
                                     'type': kind, 'workflowId': path, 'name': name,
                                     'parameters': payload['parameters'], **({'sample': sample} if sample else {})})
             trace('command.sent', requestId=request_id, tabId=key[1])
             return await asyncio.wait_for(future, timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             trace('command.cancelled_or_timed_out', requestId=request_id)
-            await self.send(target, {'event': 'cancel', 'requestId': request_id})
+            try:
+                await self.deliver(key, browser, {'event': 'cancel', 'requestId': request_id})
+            except (ConnectionError, RuntimeError) as error:
+                trace('command.cancel_delivery_failed', requestId=request_id, error=str(error))
             raise
         finally:
             self.pending.pop(request_id, None)

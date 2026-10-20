@@ -1,7 +1,7 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
-import { isAnimImageInputClass } from './input_contract.js?v=13-diag2'
-import { startPushBridge } from './push_bridge.js?v=13-diag2'
+import { isAnimImageInputClass } from './input_contract.js?v=13-native1'
+import { startPushBridge } from './push_bridge.js?v=13-native1'
 
 function makeId() {
   return globalThis.crypto?.randomUUID?.() || `anim-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`

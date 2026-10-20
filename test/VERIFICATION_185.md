@@ -14,6 +14,9 @@ Implementation contract: https://github.com/lazydeveloperkr/anim/issues/185#issu
 
 ## Completed locally on macOS
 
+The following completed checks apply to the earlier Bridge-socket command
+transport. They do not validate the subsequent native-event delivery change.
+
 - `npm test`: 13 tests pass, including inactive-tab native loading, zero idle
   graph reads/timers, cancellation of unresolved work, and BFCache restore.
 - ComfyUI venv Python `-m unittest discover -s test -p 'test_*.py'`: 68 tests
@@ -33,6 +36,22 @@ Windows memory behavior, or video download/playback. Those remain acceptance
 work. The PR must stay draft until video integration is verified together with
 the matching Anim changes. Final early-error precedence is covered by Python
 tests; the running Desktop has not been restarted to load that last adjustment.
+
+## Subsequent Windows diagnosis and delivery change
+
+The user's Windows ComfyUI EZ Desktop reported frontend build `13-diag2` and
+`command.sent`, followed by a timeout without a frontend acknowledgment. The
+same records were then read directly from that server's existing internal log
+endpoint; no generated request was sent for this diagnosis.
+
+Frontend commands now use ComfyUI's native `anim_bridge_command` socket event
+with an exact client ID, Bridge tab/session and per-connection identity. Bridge
+socket uplink still carries metadata, diagnostics and receipts. Missing native
+connection fails immediately, stale connection events are ignored, and duplicate
+request IDs cannot execute twice. Python/JS coverage was updated for those
+conditions, but **these new tests and real generation have not been run**, at the
+user's explicit request to perform validation themselves. Frontend build is
+`13-native1`; Windows video execution remains unconfirmed.
 
 ## Reproduce the image transport probe
 

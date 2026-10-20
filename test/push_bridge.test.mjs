@@ -23,7 +23,10 @@ test('idle lists names/paths only without inspecting graphs, timers or native me
   Object.defineProperty(f.store.openWorkflows[0],'activeState',{get(){throw Error('idle graph read')}})
   const bridge=startPushBridge({...f,sessionId:'s',tabId:'t',WebSocketImpl:f.Socket,windowImpl:f.browser,schedule(){timers++;return 1},unschedule(){}})
   const socket=f.Socket.all[0];socket.open()
-  assert.deepEqual(socket.sent,[{event:'metadata',workflows:[{workflowId:'one',name:'One'},{workflowId:'two',name:'Two'}]}])
+  assert.equal(socket.sent.length,1)
+  assert.deepEqual(socket.sent[0].workflows,[{workflowId:'one',name:'One'},{workflowId:'two',name:'Two'}])
+  assert.equal(socket.sent[0].comfyClientId,'')
+  assert.ok(socket.sent[0].bridgeConnectionId)
   assert.equal(timers,0);assert.equal(f.conversions,0)
   f.store.openWorkflows[1].filename='Renamed';f.change()
   assert.equal(socket.sent.length,2);assert.equal(socket.sent[1].workflows[1].name,'Renamed')
@@ -50,6 +53,20 @@ test('BFCache page restore starts a fresh socket and removes old listeners/queue
   const shown=new Event('pageshow');shown.persisted=true;f.browser.dispatchEvent(shown)
   assert.equal(f.Socket.all.length,2)
   f.Socket.all[1].open();bridge.stop()
+})
+
+test('native ComfyUI events target the exact Bridge connection and execute once', async () => {
+  const f=fixture();f.api.clientId='native-client'
+  const bridge=startPushBridge({...f,sessionId:'s',tabId:'t',WebSocketImpl:f.Socket,windowImpl:f.browser})
+  const socket=f.Socket.all[0];socket.open()
+  assert.equal(socket.sent[0].comfyClientId,'native-client')
+  const command={event:'command',requestId:'native-r',commandId:'native-r',type:'run',workflowId:'two',name:'Two',parameters:{prompt:'Native video input'},bridgeSessionId:'s',bridgeTabId:'t',bridgeConnectionId:socket.sent[0].bridgeConnectionId}
+  const emit=value=>{const event=new Event('anim_bridge_command');event.detail=value;f.api.dispatchEvent(event)}
+  emit({...command,bridgeConnectionId:'expired'});await tick();assert.equal(f.runs,0)
+  emit(command);emit(command);await tick();await tick()
+  assert.equal(f.runs,1)
+  assert.equal(socket.sent.find(v=>v.event==='result').promptId,'p1')
+  bridge.stop();emit({...command,requestId:'after-close'});await tick();assert.equal(f.runs,1)
 })
 
 test('cancelled unresolved work frees the command queue and late completion is ignored', async () => {

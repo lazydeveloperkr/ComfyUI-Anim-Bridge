@@ -2,7 +2,10 @@
 
 Bridge 13 sends Anim the **name and opaque ID** of each open workflow.
 Anim sends that identity, a unique request ID, prompt and semantic arguments over
-a WebSocket. Bridge loads the selected tab, privately maps and validates inputs,
+a WebSocket. Bridge delivers frontend commands through ComfyUI's existing socket
+and `anim_bridge_command` API event, addressed to one native client, Bridge tab
+and connection. Metadata and receipts return through the Bridge socket. No
+additional socket is created for this native event. Bridge loads the selected tab, privately maps and validates inputs,
 verifies the actual widgets, and calls the tab's native Run action. Only a small
 receipt, completion/failure and output file descriptors return to Anim. Anim
 never receives the workflow graph or node bindings.
@@ -66,13 +69,25 @@ The last printed stage identifies where the request stopped.
 For Windows ComfyUI EZ Desktop, use its existing ComfyUI server log view; no
 developer-tools shortcut is required. After updating, restart the ComfyUI server
 and fully close/reopen its frontend window. `socket.connected` for role browser
-should include `frontendBuild: "13-diag2"`; `unknown` means the connected frontend
+should include `frontendBuild: "13-native1"`; `unknown` means the connected frontend
 has not loaded the diagnostic build. `browser.socket.ready` confirms that a
-server frame reached the frontend and its acknowledgment returned.
+server frame reached the frontend and its acknowledgment returned; transport
+`comfyui` confirms the native event path.
 `command.sent` confirms the server send finished. `browser.message.failed` and
 `browser.frontend.error` report decoding/handler errors that previously could
 leave the UI silent. These diagnostics locate the failure; they do not certify
 that the Windows video-generation problem is fixed.
+
+Native delivery requires a connected ComfyUI execution socket. Missing native
+client identity or a disconnected socket fails immediately rather than waiting
+30 seconds. Connection IDs reject stale events after Bridge reconnects; a
+bounded request-ID set rejects duplicate delivery. A status event updates native
+client identity after reconnection; there is no periodic status query.
+
+For an existing server that exposes ComfyUI's internal log endpoint, diagnostics
+can be read on demand from `/internal/logs/raw` without copying console text.
+This is a ComfyUI internal endpoint and availability depends on its version.
+Bridge does not add a remote-control endpoint or automatically poll these logs.
 
 Browser stages are also printed in the frontend developer tools Console, and
 forwarded over the existing Bridge socket to the server console. Before that

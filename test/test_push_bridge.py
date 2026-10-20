@@ -76,6 +76,30 @@ class ProtocolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.history_reads,[])
         self.assertEqual(len(self.bridge.jobs),30)
 
+    async def test_native_dispatch_targets_one_client_and_connection(self):
+        delivered = []
+        self.bridge.dispatch_browser = lambda client, message: delivered.append((client, message))
+        await self.bridge.publish(self.key, self.browser, [{'workflowId': 'w', 'name': 'W'}], 'native-client', 'connection-1')
+        self.assertEqual(delivered[0][0], 'native-client')
+        self.assertEqual(delivered[0][1]['event'], 'ready')
+        task = await self.request()
+        client, message = delivered[-1]
+        self.assertEqual(client, 'native-client')
+        self.assertEqual(message['bridgeSessionId'], 'session')
+        self.assertEqual(message['bridgeTabId'], 'tab')
+        self.assertEqual(message['bridgeConnectionId'], 'connection-1')
+        self.assertEqual(message['event'], 'command')
+        self.assertFalse(self.browser.messages)
+        self.bridge.result(self.browser, {'requestId': 'r', 'applied': True, 'promptId': 'p'})
+        self.assertEqual((await task)['promptId'], 'p')
+
+    async def test_missing_native_socket_fails_without_waiting_for_timeout(self):
+        self.bridge.dispatch_browser = lambda *_: self.fail('Must never broadcast')
+        with self.assertRaisesRegex(ConnectionError, 'execution socket is not ready'):
+            await (await self.request())
+        self.assertFalse(self.bridge.pending)
+        self.assertFalse(self.browser.messages)
+
     async def test_timeout_cancels_without_replay_and_late_receipt_is_ignored(self):
         payload={'requestId':'r','type':'run',**self.selected,'parameters':{}}
         with self.assertRaises(asyncio.TimeoutError):
