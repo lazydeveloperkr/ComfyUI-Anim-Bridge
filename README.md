@@ -1,27 +1,27 @@
 # ComfyUI Anim Bridge
 
-ComfyUI Anim Bridge lets Anim discover the workflows that are currently open
-in the ComfyUI frontend. Bridge 12 publishes lightweight tab/workflow metadata
-through one persistent WebSocket per browser document. There are no periodic
-HTTP requests, graph conversions, graph hashes, command queries or result queries.
+ComfyUI Anim Bridge lets Anim run the workflows that are open in ComfyUI.
 
-Anim explicitly inspects only the selected workflow, applies and verifies its
-inputs, then uses that workflow tab's native Run path. Execution status retains
-the original ComfyUI prompt ID. The browser forwards subscribed execution statuses through its existing
-native socket and already-parsed API events; it does not add another ComfyUI execution connection. Anim reads
-history once after the terminal frame, with manual recovery after missed events.
+A ComfyUI tab (browser or Comfy Desktop) tells the Bridge on the ComfyUI
+server which workflows it has open, and sends the executable graph of the
+active workflow. It does this only when something changes: a tab opens,
+closes, switches, is saved or edited (after the edit settles). There is no
+polling and the tab never receives commands.
 
-Upgrade both Anim and this extension together, restart ComfyUI, and reload all
-browser tabs. Older Bridge versions do not receive a polling fallback. After a
-browser page reload, refresh Anim's list and reselect the live tab. IDs are unique
-per document so duplicated browser tabs cannot steal each other's commands.
+Anim inspects, fills and runs the selected workflow through the ComfyUI server.
+The Bridge puts Anim's values into the graph the tab shared and queues it with
+ComfyUI's own `/prompt` route, so ComfyUI validates it as usual. Execution
+statuses are taken on the server and keep the original prompt ID. Anim reads
+history once after the final status. Projects and Excel exports never contain
+the graph.
 
-Every browser tab acknowledges a command as soon as it arrives. A tab that does
-not (its page stopped, the connection died, or it still runs an older script)
-is removed from the list within about 5 seconds and Anim shows "reload the
-ComfyUI tab" instead of waiting 30 seconds. A tab whose connection drops
-reconnects by itself. The ComfyUI log prints `[Anim Bridge]` lines for each
-tab connection and command; see `test/README.md` for CPU-only smoke workflows.
+A workflow can be run once its tab has been the active tab since ComfyUI
+started; otherwise Anim asks you to click that tab once. Anim's values are used
+for the run; they are not typed into the editor's node widgets. The ComfyUI
+log prints `[Anim Bridge]` lines for tabs and queued prompts; see
+`test/README.md` for CPU-only smoke workflows.
+
+After updating, restart ComfyUI and reload every ComfyUI tab.
 
 ## Install in ComfyUI-Easy-Install on Windows
 
@@ -38,9 +38,8 @@ ComfyUI-Easy-Install\ComfyUI\custom_nodes\comfyui_anim_bridge\
   __init__.py
   bridge_protocol.py
   web\anim_bridge.js
-  web\push_bridge.js
+  web\publish_bridge.js
   web\input_contract.js
-  web\command_queue.js
   web\workflow_revision.js
 ```
 
@@ -310,45 +309,21 @@ through the workflow's own switch/bypass logic, or keep a separate workflow
 open and select it in Anim. The Bridge never invents a placeholder image,
 video, or audio file because that would silently change the generated result.
 
-## Running a workflow from its tab
+## Running a workflow
 
-Bridge 12 accepts correlated `queuePrompt` commands over
-`/anim_bridge/v1/events`. The selected tab runs through `app.queuePrompt` and
-responds `{event: result, commandId, promptId}` or a matching error. There are no
-`/commands`, `/command_result`, `/publish`, or HTTP command routes. Apply returns
-only assigned-input readback values. Explicit `refresh`/`loadSample` commands
-return a transient selected-workflow snapshot. Status events carry original
-`prompt_id` values; Anim matches only its own prompt IDs.
+- `POST /anim_bridge/v1/publish`: a tab's open workflows and, for the active
+  one, its executable graph with the inputs Anim can set. Sent on change only.
+- `POST /anim_bridge/v1/unpublish`: sent when the tab is closed or reloaded.
+  A tab whose ComfyUI connection is gone is dropped from the list as well.
+- `GET /anim_bridge/v1/workflows`: the open workflows, without graphs.
+- `/anim_bridge/v1/events?role=anim` (WebSocket for Anim): `refresh` returns the
+  shared graph, `applyInputs` checks Anim's values and returns them as ComfyUI
+  stores them, `queuePrompt` queues the graph with those values and returns the
+  prompt ID. Every failure returns a message at once. `watchPrompt` /
+  `unwatchPrompt` / `watchPrompts` select which execution statuses Anim
+  receives; statuses carry only prompt ID, node, progress and error text.
 
-Anim sends `watchPrompt` / `unwatchPrompt` deltas and restores interest with
-`watchPrompts` after reconnecting. The server routes events only to subscribers
-(or a pending queue owner while the prompt ID is being captured). Status payloads
-contain only prompt ID, node, progress and error text.
-
-The native frontend `executing` CustomEvent drops `prompt_id`, so the extension
-reads that event from the already-open native WebSocket. The raw listener is
-removed when no Anim task is tracked; while active it filters the small event
-header before parsing. Other statuses reuse the API's already-parsed events.
-ComfyUI commits history before sending `executing(node: null)`; its earlier
-`execution_success` event is not a safe time to fetch history. No HTTP fallback
-is used for reconnects. Pending operations are bounded (64 server-wide, 16 per
-client/browser) and time out once. Disconnect/timeout cancels pending work, and
-queue commands are never automatically replayed. Already-queued paid execution
-cannot be undone by cancelling the RPC waiter.
-
-Each connection owns an abortable command queue. Cancellation or timeout frees
-the queue even if an old graph inspection never settles; stale continuations
-cannot send results or proceed to another editor action. Outstanding graph reads
-are bounded at two. Native open/load/queue operations do not support cancellation,
-so they retain an editor lease until they actually settle: later commands fail
-promptly with browser reload guidance instead of waiting forever or overlapping
-an unfinished mutation. Queue commands are never replayed.
-
-Persisted `pagehide` suspends the Bridge and `pageshow` restores one connection
-and one hook set after BFCache navigation. Explicit stop remains final. Scalar
-`isDirty` metadata follows native edits without graph conversion. Explicit
-inspection computes a stable structural revision, excluding Anim runtime input
-values; command IDs are not workflow revisions.
+Runs use the tab's ComfyUI client ID, so the tab also shows their progress.
 
 ## Media input capacity
 
@@ -384,7 +359,7 @@ After installation, this ComfyUI route returns the Bridge status:
 Expected response:
 
 ```json
-{"bridgeVersion": 12, "status": "ok", "transport": "websocket"}
+{"bridgeVersion": 12, "status": "ok", "transport": "publish"}
 ```
 
 ## Update
@@ -435,42 +410,13 @@ workflow to change generation mode. Remove references explicitly when switching
 to a text-only workflow; Anim never discards them automatically.
 
 
-### Installed sample API (Bridge 12)
+### Installed samples
 
-- `GET /anim_bridge/v1/samples`: filename metadata only, without parsing graphs.
-- Explicit `loadSample` command over `/anim_bridge/v1/events`: allowlisted sample
-  ID (including the legacy `qwen21_firstframe_anim.json`); reads only the selected file and imports it in a live browser.
-- A correlated result returns the real imported identity and a transient graph.
-  Selecting a sample in Anim alone does not load or inspect a graph.
+`GET /anim_bridge/v1/samples` lists the sample files. Anim cannot open a sample
+in ComfyUI; open it in ComfyUI first, then select it from the open workflows.
 
-Imports use ComfyUI's normal new-workflow loader and fresh graph IDs; original
-sample files and existing browser workflows are not overwritten.
+### Testing
 
-### Testing and remaining runtime acceptance
-
-Run `npm test` and `python3 -m unittest discover -s test -p 'test_*.py'`.
-Serve this directory locally and open `test/browser_command_queue.html` in a
-browser to check real native timer completion, timeout, cancellation and cleanup.
-The page must report `PASS: native browser timers`. Node's timer functions do not
-enforce the browser receiver restriction, so Node-only mocks previously missed
-an `Illegal invocation` that prevented every command from starting. The command
-queue now invokes captured timer functions without using the queue as their
-receiver. Update the installed Bridge and reload ComfyUI browser pages to apply
-this frontend fix; already-open pages retain the previous module until reloaded.
-Tests cover metadata-only idle paths, command IDs, duplicate/out-of-order events,
-timeout/disconnect cleanup, reconnect without replay, multi-tab ownership,
-selected-only conversion, readback and native prompt identity. Regressions also
-cover stalled reads across cancellation/reconnection, late stale completion,
-stalled native mutations, repeated BFCache restoration, zero idle native JSON
-parsing, minimal subscribed statuses, legacy sample discovery/loading, dirty
-metadata and stable structural revisions.
-
-The idle tests use virtual time/injected sockets. They are not real 30-minute
-Windows/macOS RSS/heap/GPU measurements. The current authoring workspace has no
-running ComfyUI or Windows host. Before accepting issue 185, record real idle
-HTTP/graph/hash counts, RSS/heap/listener/queue measurements, generation/download
-results and reconnect/restart cases on both platforms. See the paired Anim PR's
-`docs/comfyui_push_verification.md` for the reproducible acceptance procedure.
-
-Anim project/portable/Excel exports preserve workflow references and selected
-input metadata only; the executable workflow remains in ComfyUI.
+Run `npm test` and `python -m unittest discover -s test -p "test_*.py"`.
+`test/README.md` describes the CPU-only smoke workflows and
+`test/integration/desktop_smoke.py`, which checks a real ComfyUI.

@@ -1,7 +1,6 @@
 import assert from 'node:assert/strict'
 
 import {
-  applyInputValues,
   declaredInputs,
   explicitAnimInputs,
   inferredKind,
@@ -142,50 +141,6 @@ assert.notDeepEqual(
   ),
   revisionA,
 )
-
-const callbackValues = []
-const dirtyNodes = []
-const nodes = {
-  1: {
-    widgets: [{ name: 'prompt', value: '', callback: (value) => callbackValues.push(value) }],
-    setDirtyCanvas: (...args) => dirtyNodes.push(args),
-  },
-  2: {
-    widgets: [{ name: 'image_paths', value: '' }],
-    setDirtyCanvas: (...args) => dirtyNodes.push(args),
-  },
-}
-assert.deepEqual(
-  applyInputValues(
-    (nodeId) => nodes[nodeId],
-    { '1.prompt': 'Visible prompt', '2.image_paths': 'first.png\nlast.png' },
-  ),
-  ['1.prompt', '2.image_paths'],
-)
-assert.equal(nodes[1].widgets[0].value, 'Visible prompt')
-assert.equal(nodes[2].widgets[0].value, 'first.png\nlast.png')
-assert.deepEqual(callbackValues, ['Visible prompt'])
-assert.equal(dirtyNodes.length, 2)
-assert.throws(
-  () => applyInputValues((nodeId) => nodes[nodeId], { '3.prompt': 'missing' }),
-  /node 3 is not open/,
-)
-
-const durationCallbackValues = []
-const durationNodes = {
-  5: {
-    widgets: [{
-      name: 'duration',
-      type: 'number',
-      value: 0,
-      callback: (value) => durationCallbackValues.push(value),
-    }],
-    setDirtyCanvas: () => {},
-  },
-}
-applyInputValues((nodeId) => durationNodes[nodeId], { '5.duration': '5.5' })
-assert.equal(durationNodes[5].widgets[0].value, 5.5)
-assert.deepEqual(durationCallbackValues, [5.5])
 
 assert.equal(
   explicitAnimInputs({
@@ -411,31 +366,6 @@ assert.deepEqual(
   [true, true, false],
 )
 
-// Queue in the tab: the prompt id comes from the tab's own api.queuePrompt.
-{
-  const { queueAndCapturePromptId } = await import('../web/input_contract.js')
-  const calls = []
-  const fakeApi = {
-    async queuePrompt(number, prompt) {
-      calls.push([number, prompt])
-      return { prompt_id: 'prompt-7', number: 1 }
-    },
-  }
-  const original = fakeApi.queuePrompt
-  const promptId = await queueAndCapturePromptId(fakeApi, () =>
-    fakeApi.queuePrompt(0, { output: {} }),
-  )
-  assert.equal(promptId, 'prompt-7')
-  assert.equal(calls.length, 1)
-  assert.equal(fakeApi.queuePrompt, original)
-
-  await assert.rejects(
-    queueAndCapturePromptId(fakeApi, async () => {}),
-    /did not queue/,
-  )
-  assert.equal(fakeApi.queuePrompt, original)
-}
-
 // Krea guided generation uses generic reference IDs; its VAE needs a source.
 {
   const graph = {
@@ -449,26 +379,4 @@ assert.deepEqual(
   assert.equal(inputs[0].required, true)
   assert.equal(inputs[1].promptToken, 'reference image 2')
   assert.notEqual(inputs[1].required, true)
-}
-
-// Installed templates import as a new workflow instead of replacing a dirty tab.
-{
-  const { loadInstalledSample } = await import('../web/input_contract.js')
-  const dirty = { path: 'dirty.json', isModified: true }
-  const store = { activeWorkflow: dirty, openWorkflows: [dirty] }
-  const command = { commandId: 'abcdefgh123', sampleName: 'krea2_text2image_anim.json', sample: { nodes: [] } }
-  const app = { async loadGraphData(data, clean, restore, name) {
-    assert.deepEqual(data, command.sample)
-    assert.equal(clean, true)
-    assert.equal(restore, true)
-    assert.match(name, /abcdefgh.*krea2_text2image/)
-    const imported = { path: name }
-    store.openWorkflows.push(imported)
-    store.activeWorkflow = imported
-    return imported
-  } }
-  assert.match(await loadInstalledSample(app, store, command), /Anim Bridge/)
-  assert.equal(store.openWorkflows[0], dirty)
-  assert.equal(dirty.isModified, true)
-  await assert.rejects(loadInstalledSample({ async loadGraphData() { return false } }, store, command), /new workflow/)
 }

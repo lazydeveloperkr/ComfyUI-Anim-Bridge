@@ -1,7 +1,7 @@
 import { app } from '../../scripts/app.js'
 import { api } from '../../scripts/api.js'
 import { isAnimImageInputClass } from './input_contract.js'
-import { startPushBridge } from './push_bridge.js'
+import { startBridge } from './publish_bridge.js'
 
 function makeId() {
   return globalThis.crypto?.randomUUID?.() || `anim-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
@@ -264,6 +264,6 @@ app.registerExtension({
     if (isAnimImageInputClass(node.comfyClass)) setupImageInput(node)
   },
   async setup() {
-    startPushBridge({ app, api, sessionId, tabId })
+    startBridge({ app, api, sessionId, tabId })
   },
 })

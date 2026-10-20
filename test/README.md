@@ -35,8 +35,8 @@ All workflows were saved from the ComfyUI editor, so they open as normal tabs.
    `fixtures/custom_nodes/anim_bridge_test_delay` into `ComfyUI/custom_nodes`.
    Remove it again after testing.
 5. Restart ComfyUI, then reload every ComfyUI browser tab.
-6. In the ComfyUI **Workflows** sidebar, open the workflows you want to test.
-   The browser console shows `[Anim Bridge] Connected to ComfyUI (tab …)`.
+6. In the ComfyUI **Workflows** sidebar, open the workflows you want to test
+   and click each tab once so ComfyUI shares its graph with the Bridge.
 
 ### Check with Anim
 
@@ -56,29 +56,28 @@ must never show `TimeoutException … Future not completed`.
 
 ### Automated check
 
-With `bridge_storyboard_cpu_smoke` (and ideally one more workflow) open:
+With `bridge_storyboard_cpu_smoke` open and clicked once (so ComfyUI has
+shared its graph):
 
 ```sh
 python test/integration/desktop_smoke.py --url http://127.0.0.1:8188
 ```
 
-It plays Anim's side of the protocol against the real browser tab and checks:
-inspection, input readback, a run that starts from another active tab (the
-selected graph must run, not the previous tab's), the original prompt ID,
-the completion event and one `/history` read with the saved PNG; that an
-unresponsive tab fails in about 5 s with a clear message and leaves the list;
-that a tab running an older script is refused at once; and that a tab whose
-connection was dropped reconnects by itself.
+It plays Anim's side of the protocol and checks inspection, input readback, a
+run of exactly the selected workflow with its original prompt ID, the
+completion event and one `/history` read with the saved PNG, an immediate
+message for a workflow that is not open, and that a page still running an
+older Bridge script is told to reload.
 
 ## Reading failures
 
-The ComfyUI server log shows every command:
+The ComfyUI server log shows each tab and run:
 
 ```text
-[Anim Bridge] browser tab connected session=… tab=… client=13
-[Anim Bridge] command <id> refresh sent to tab=…
-[Anim Bridge] command <id> refresh finished in 0.004s
-[Anim Bridge] command <id>: tab=… did not acknowledge; disconnecting it
+[Anim Bridge] ComfyUI tab opened session=… tab=…
+[Anim Bridge] queued prompt <prompt id> for workflows/<name>.json in 0.005s
+[Anim Bridge] ComfyUI tab closed session=… tab=…
 ```
 
-`client=0` means that browser tab still runs an older Bridge script: reload it.
+The ComfyUI tab's console shows `[Anim Bridge] Publishing workflows failed`
+when it could not reach the server.

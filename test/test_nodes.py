@@ -209,13 +209,20 @@ class _JsonRequest:
         return self.body
 
 
+class TextRequest:
+    def __init__(self, text):
+        self._text = text
+
+    async def text(self):
+        return self._text
+
+
 class AnimBridgeNodeTest(unittest.TestCase):
     def setUp(self):
-        bridge._push.browsers.clear()
-        bridge._push.pending.clear()
-        bridge._push.clients.clear()
-        bridge._push.subscriptions.clear()
-        bridge._push.queue_commands.clear()
+        bridge._hub.tabs.clear()
+        bridge._hub.clients.clear()
+        bridge._hub.subscriptions.clear()
+        bridge._hub.queueing.clear()
 
 
     def test_prompt_input_returns_the_string(self):
@@ -605,7 +612,7 @@ class AnimBridgeNodeTest(unittest.TestCase):
         self.assertNotIn('anim-sample/qwen21_firstframe_3ref.json', ids)
         self.assertNotIn('anim-sample/krea2_image_edit_anim.json', ids)
 
-    def test_legacy_qwen_sample_load_reads_only_selected_file(self):
+    def test_sample_listing_reads_no_graph(self):
         from unittest.mock import patch
         real_read = pathlib.Path.read_text
         read = []
@@ -616,19 +623,25 @@ class AnimBridgeNodeTest(unittest.TestCase):
             samples = bridge._image_samples()
             self.assertIn('anim-sample/qwen21_firstframe_anim.json', samples)
             self.assertEqual(read, [])
-            loaded = bridge._load_image_sample('anim-sample/qwen21_firstframe_anim.json')
-            self.assertTrue(loaded['nodes'])
-            self.assertEqual(read, ['qwen21_firstframe_anim.json'])
-            self.assertIsNone(bridge._load_image_sample('anim-sample/../../__init__.py'))
 
-    def test_health_reports_push_bridge_12(self):
+    def test_health_keeps_the_protocol_anim_accepts(self):
         payload, _ = asyncio.run(bridge.anim_bridge_health(None))
         self.assertEqual(payload['bridgeVersion'], 12)
-        self.assertEqual(payload['transport'], 'websocket')
+        self.assertEqual(payload['transport'], 'publish')
 
-    def test_legacy_polling_routes_are_removed(self):
-        for name in ('anim_bridge_commands', 'anim_bridge_command_result', 'anim_bridge_publish'):
+    def test_command_polling_routes_stay_removed(self):
+        for name in ('anim_bridge_commands', 'anim_bridge_command_result'):
             self.assertFalse(hasattr(bridge, name))
+
+    def test_tab_publication_route_stores_the_workflows(self):
+        body = {'sessionId': 's', 'tabId': 't', 'workflows': [{'workflowId': 'w', 'title': 'W'}]}
+        payload, status = asyncio.run(bridge.anim_bridge_publish(TextRequest(json.dumps(body))))
+        self.assertEqual(status, 200)
+        self.assertEqual([row['workflowId'] for row in bridge._hub.metadata()], ['w'])
+        asyncio.run(bridge.anim_bridge_unpublish(TextRequest(json.dumps(body))))
+        self.assertEqual(bridge._hub.metadata(), [])
+        payload, status = asyncio.run(bridge.anim_bridge_publish(TextRequest('not json')))
+        self.assertEqual(status, 400)
 
     def _qwen_graph(self, character_slot='images.image_1'):
         return {

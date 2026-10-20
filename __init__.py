@@ -6,7 +6,7 @@ import uuid
 from aiohttp import web, WSMsgType
 import asyncio
 
-from .bridge_protocol import PushBridge
+from .bridge_protocol import BridgeError, BridgeHub, log as _bridge_log
 
 import folder_paths
 import nodes
@@ -28,7 +28,6 @@ except ImportError:
     _StockMiniMaxH3ReferenceToVideo = None
 
 
-_push = PushBridge()
 
 ANIM_IMAGE_REFERENCES = 'ANIM_IMAGE_REFERENCES'
 ANIM_VIDEO_REFERENCES = 'ANIM_VIDEO_REFERENCES'
@@ -84,76 +83,144 @@ def _json(payload, status=200):
     return web.json_response(payload, status=status)
 
 
+def _page_connected(client_id):
+    # A ComfyUI page keeps ComfyUI's own socket open under its client ID.
+    return client_id in PromptServer.instance.sockets
+
+
+_hub = BridgeHub(is_connected=_page_connected)
+
+
+def _forward_execution_status():
+    """Sees ComfyUI's execution statuses on the server, where they are produced."""
+    server = PromptServer.instance
+    original = getattr(server, 'send_sync', None)
+    if original is None or getattr(original, '__anim_bridge__', False):
+        return
+
+    def send_sync(event, data, sid=None):
+        if isinstance(event, str) and isinstance(data, dict) and data.get('prompt_id'):
+            try:
+                server.loop.call_soon_threadsafe(
+                    lambda: asyncio.ensure_future(_hub.execution(event, dict(data))))
+            except RuntimeError:
+                pass
+        return original(event, data, sid)
+
+    send_sync.__anim_bridge__ = True
+    server.send_sync = send_sync
+
+
+_forward_execution_status()
+
+
+async def _queue_prompt(prompt, client_id):
+    """Queues through ComfyUI's own /prompt route, with its validation."""
+    from aiohttp import ClientSession
+    server = PromptServer.instance
+    address = server.address if server.address not in (None, '', '0.0.0.0', '::') else '127.0.0.1'
+    if ':' in address and not address.startswith('['):
+        address = f'[{address}]'
+    try:
+        from comfy.cli_args import args
+        scheme = 'https' if args.tls_keyfile and args.tls_certfile else 'http'
+    except ImportError:
+        scheme = 'http'
+    body = {'prompt': prompt, **({'client_id': client_id} if client_id else {})}
+    async with ClientSession() as session:
+        async with session.post(f'{scheme}://{address}:{server.port}/prompt', json=body, ssl=False) as response:
+            result = await response.json(content_type=None)
+    if response.status != 200 or not result.get('prompt_id'):
+        error = result.get('error') if isinstance(result, dict) else None
+        detail = error.get('message') if isinstance(error, dict) else error
+        node_errors = result.get('node_errors') if isinstance(result, dict) else None
+        raise BridgeError(f'ComfyUI rejected the workflow: {detail or response.status}'
+                          + (f' {json.dumps(node_errors)[:2000]}' if node_errors else ''))
+    return str(result['prompt_id'])
+
+
 @PromptServer.instance.routes.get('/anim_bridge/v1/health')
 async def anim_bridge_health(_request):
-    return _json({'bridgeVersion': 12, 'status': 'ok', 'transport': 'websocket'})
+    return _json({'bridgeVersion': 12, 'status': 'ok', 'transport': 'publish'})
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/workflows')
 async def anim_bridge_workflows(_request):
-    return _json({'workflows': _push.metadata()})
+    return _json({'workflows': _hub.metadata()})
+
+
+async def _read_json(request):
+    # navigator.sendBeacon sends text/plain; parse the body either way.
+    try:
+        payload = json.loads(await request.text())
+    except ValueError:
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/publish')
+async def anim_bridge_publish(request):
+    payload = await _read_json(request)
+    if payload is None:
+        return _json({'error': 'A JSON object is required'}, 400)
+    try:
+        _hub.publish(payload)
+    except BridgeError as error:
+        return _json({'error': str(error)}, 400)
+    return _json({'ok': True})
+
+
+@PromptServer.instance.routes.post('/anim_bridge/v1/unpublish')
+async def anim_bridge_unpublish(request):
+    payload = await _read_json(request)
+    if payload is not None:
+        _hub.unpublish(payload)
+    return _json({'ok': True})
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/events')
 async def anim_bridge_events(request):
-    role = request.query.get('role')
-    key = (request.query.get('session_id', ''), request.query.get('tab_id', ''))
-    if role not in ('browser', 'anim') or (role == 'browser' and not all(key)):
-        return _json({'error': 'A valid role and browser identity are required'}, 400)
-    # Protocol-level ping/pong drops a half-open connection (sleep, network
-    # change) instead of listing a tab that can no longer receive commands.
-    socket = web.WebSocketResponse(max_msg_size=32 * 1024 * 1024, heartbeat=20)
+    if request.query.get('role') != 'anim':
+        # Pages from an older Bridge script still try to connect here.
+        return _json({'error': 'Reload this ComfyUI tab to update Anim Bridge.'}, 410)
+    socket = web.WebSocketResponse(max_msg_size=4 * 1024 * 1024, heartbeat=20)
     await socket.prepare(request)
     tasks = set()
 
     async def command(payload):
+        command_id = payload.get('commandId')
         try:
-            result = await _push.command(socket, payload, _load_image_sample)
-            await socket.send_json({'event': 'result', **result})
+            result = await _hub.command(socket, payload, _queue_prompt)
+            await socket.send_json({'event': 'result', 'commandId': command_id, **result})
         except Exception as error:
+            if not isinstance(error, BridgeError):
+                _bridge_log.exception('[Anim Bridge] command %s failed', command_id)
             if not socket.closed:
                 # Never send an empty error: Anim would treat it as success.
-                message = str(error) or type(error).__name__
-                await socket.send_json({'event': 'result',
-                                        'commandId': payload.get('commandId'), 'error': message})
+                await socket.send_json({'event': 'result', 'commandId': command_id,
+                                        'error': str(error) or type(error).__name__})
 
-    if role == 'browser':
-        try:
-            client = int(request.query.get('client', '0'))
-        except ValueError:
-            client = 0
-        await _push.attach(key, socket, client)
-    else:
-        _push.clients.add(socket)
+    _hub.clients.add(socket)
     await socket.send_json({'event': 'ready', 'bridgeVersion': 12})
     try:
         async for message in socket:
             if message.type != WSMsgType.TEXT:
                 continue
-            payload = json.loads(message.data)
+            try:
+                payload = json.loads(message.data)
+            except ValueError:
+                continue
             if not isinstance(payload, dict):
                 continue
             event = payload.get('event')
-            if role == 'browser':
-                if event == 'metadata':
-                    await _push.publish(key, socket, payload.get('workflows') or [])
-                elif event == 'ack':
-                    _push.ack(socket, payload)
-                elif event == 'result':
-                    _push.result(socket, payload)
-                elif event == 'executionDisconnected':
-                    for client in list(_push.clients):
-                        if not client.closed:
-                            await client.send_json({'event': 'executionDisconnected', 'sessionId': key[0], 'tabId': key[1]})
-                elif event == 'execution':
-                    await _push.execution(socket, payload)
-            elif event in ('watchPrompt', 'unwatchPrompt'):
-                await _push.track_one(socket, payload.get('promptId'), event == 'watchPrompt')
-            elif event == 'watchPrompts':
-                await _push.track(socket, payload.get('promptIds'))
-            elif event == 'cancel':
-                await _push.cancel(socket, payload.get('commandId'))
-            elif event == 'command':
+            try:
+                if event in ('watchPrompt', 'unwatchPrompt'):
+                    await _hub.track_one(socket, payload.get('promptId'), event == 'watchPrompt')
+                elif event == 'watchPrompts':
+                    await _hub.track(socket, payload.get('promptIds'))
+            except BridgeError:
+                continue
+            if event == 'command':
                 if len(tasks) >= 16:
                     await socket.close(code=1008, message=b'Too many commands')
                     break
@@ -161,11 +228,7 @@ async def anim_bridge_events(request):
                 tasks.add(task)
                 task.add_done_callback(tasks.discard)
     finally:
-        if role == 'browser':
-            await _push.detach(key, socket)
-        _push.clients.discard(socket)
-        if role == 'anim':
-            await _push.track(socket, [])
+        _hub.forget(socket)
         for task in tasks:
             task.cancel()
         if tasks:
@@ -189,13 +252,6 @@ def _image_samples():
     return {_SAMPLE_PREFIX + path.name: path
             for name in _IMAGE_SAMPLE_NAMES
             if (path := _SAMPLE_DIRECTORY / name).is_file()}
-
-
-def _load_image_sample(sample_id):
-    path = _image_samples().get(sample_id)
-    if path is None:
-        return None
-    return json.loads(path.read_text(encoding='utf-8'))
 
 
 @PromptServer.instance.routes.get('/anim_bridge/v1/samples')
