@@ -26,9 +26,12 @@ class PushBridge:
         self.clients = set()
         self.pending = {}
         self.jobs = {}
+        self.request_jobs = {}
         self.early = {}
         self.finished = {}
         self.finalizers = set()
+        # Accepted commands belong to the server, not the sending connection.
+        self.commands = set()
         self.seen = {}
 
     @staticmethod
@@ -96,23 +99,33 @@ class PushBridge:
 
     async def disconnect(self, owner):
         self.clients.discard(owner)
-        for request_id, (client, target, future) in list(self.pending.items()):
-            if client is owner and not future.done():
-                future.cancel()
         for job in self.jobs.values():
             job['owners'].discard(owner)
 
-    async def command(self, owner, payload, samples, timeout=30):
+    def submit(self, owner, payload, samples):
+        task = asyncio.create_task(self._respond(owner, payload, samples))
+        self.commands.add(task)
+        task.add_done_callback(self.commands.discard)
+
+    async def _respond(self, owner, payload, samples):
+        try:
+            result = await self.command(owner, payload, samples)
+            if owner in self.clients:
+                await self.send(owner, {'event': 'result', **result})
+        except Exception as error:
+            trace('command.failed', requestId=str(payload.get('requestId')), error=str(error))
+            if owner in self.clients:
+                await self.send(owner, {'event': 'result', 'requestId': payload.get('requestId'), 'error': str(error)})
+
+    async def command(self, owner, payload, samples, timeout=None):
         request_id = payload.get('requestId')
         trace('command.received', requestId=str(request_id), command=str(payload.get('type')),
               workflowId=str(payload.get('id')), workflowName=str(payload.get('name')),
               connectedBrowsers=len(self.browsers), openWorkflows=len(self.metadata()))
         if not isinstance(request_id, str) or not request_id or len(request_id) > 256:
             raise ValueError('A request ID is required')
-        if request_id in self.seen:
+        if request_id in self.seen or request_id in self.pending or request_id in self.request_jobs:
             raise ValueError('Duplicate request ID; execution was not repeated')
-        if len(self.pending) >= 64 or len(self.jobs) >= 256:
-            raise ValueError('Too many active requests')
         kind = payload.get('type')
         if kind not in ('run', 'apply'):
             raise ValueError('Unsupported command')
@@ -144,7 +157,9 @@ class PushBridge:
                                     'type': kind, 'workflowId': path, 'name': name,
                                     'parameters': payload['parameters'], **({'sample': sample} if sample else {})})
             trace('command.sent', requestId=request_id, tabId=key[1])
-            return await asyncio.wait_for(future, timeout)
+            # A large batch may wait in the frontend while earlier commands
+            # enter ComfyUI's native queue. Waiting is not a command failure.
+            return await future if timeout is None else await asyncio.wait_for(future, timeout)
         except (asyncio.TimeoutError, asyncio.CancelledError):
             trace('command.cancelled_or_timed_out', requestId=request_id)
             try:
@@ -169,7 +184,8 @@ class PushBridge:
             result['error'] = str(payload['error'])[:4096]
         prompt_id = payload.get('promptId')
         if isinstance(prompt_id, str) and prompt_id and not result.get('error'):
-            self.jobs[prompt_id] = {'requestId': request_id, 'owners': {owner}}
+            self.jobs[prompt_id] = {'requestId': request_id, 'owners': {owner} if owner in self.clients else set()}
+            self.request_jobs[request_id] = prompt_id
             result['promptId'] = prompt_id
             early = self.early.pop(prompt_id, None)
             if early:
@@ -235,6 +251,7 @@ class PushBridge:
         if len(self.finished) > 64:
             self.finished.pop(next(iter(self.finished)))
         self.jobs.pop(prompt_id, None)
+        self.request_jobs.pop(job['requestId'], None)
         trace('completion.send', requestId=job['requestId'], promptId=prompt_id,
               fileCount=len(result['files']), error=result['error'], listeners=len(job['owners']))
         for owner in list(job['owners']):

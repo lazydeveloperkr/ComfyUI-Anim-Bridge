@@ -370,12 +370,20 @@ Output/status projection uses `get_history(map_function=...)` once on completion
 without deep-copying the prompt graph. There is no extra execution WebSocket,
 no browser-side execution JSON parser, and no repeated history/queue request.
 
-Requests expire after 30 seconds. Pending command queues, active tasks and
-terminal-result caches are bounded. Cancellation releases queue slots; stale
+Accepted commands have no fixed count limit or automatic timeout. The frontend
+applies inputs and submits each command to ComfyUI's native execution queue in
+order, without waiting for earlier generations to finish. Completion tracking
+does not limit how many new commands can be submitted. Closing the sending Anim
+connection does not cancel commands already received by the Bridge. Keep the
+ComfyUI server and its selected frontend running until submission is complete;
+unsent commands and a server/frontend shutdown are not durable batch storage.
+Commands already in ComfyUI's execution queue are not interrupted by a Bridge
+disconnection. Explicit cancellation releases command slots; stale
 completion cannot complete a newer request. Uncancellable native mutations hold
 an editor lease and reject newer mutations promptly until they settle. A socket
 reconnection never replays a command; `watch` can recover active or recently
-completed prompt IDs. Unknown IDs return an explicit tracking error. Browser
+completed prompt IDs (the last 64 terminal results are cached). Unknown IDs
+return an explicit tracking error. Browser
 pagehide/pageshow handles BFCache restoration with a fresh socket and queue.
 
 The former publish/commands/command_result/apply/queue/load_sample HTTP command
@@ -476,9 +484,12 @@ to a text-only workflow; Anim never discards them automatically.
 
 ## Verification
 
-`npm test` covers semantic mapping, native tab selection, bounds, stale work and
+`npm test` covers semantic mapping, native tab selection, 1,000-command ordered
+batch submission, waiting without expiry, stale work and
 BFCache restoration. `python3 -m unittest discover -s test -p 'test*.py'` covers
-nodes, sample compatibility, RPC correlation and the native completion observer.
+nodes, sample compatibility, RPC correlation, 1,000-command socket batches,
+sender disconnection and the native completion observer. The batch unit tests
+use simulated native queue receipts; they do not run GPU models.
 
 For a real no-model Desktop check, opt in to
 `test/fixtures/custom_nodes/anim_bridge_smoke` under ComfyUI custom_nodes, open

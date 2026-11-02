@@ -1,7 +1,7 @@
-import { CommandQueue, EditorOperations } from './command_queue.js?v=13-native1'
-import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-native1'
-import { applySemanticInputs } from './semantic_inputs.js?v=13-native1'
-import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-native1'
+import { CommandQueue, EditorOperations } from './command_queue.js?v=13-bulk1'
+import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-bulk1'
+import { applySemanticInputs } from './semantic_inputs.js?v=13-bulk1'
+import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-bulk1'
 
 export function workflowMetadata(store) {
   return (store.openWorkflows || []).map(workflow => ({
@@ -111,7 +111,7 @@ export function startPushBridge({ app, api, sessionId, tabId, WebSocketImpl = We
           trace(error ? 'command.failed' : 'command.finished', { requestId: command.requestId, promptId: result?.promptId, error: error ? String(error) : '' })
           send({ event: 'result', requestId: command.requestId, ...(error ? { error: String(error) } : result) }); publish()
         }
-      }, { schedule, unschedule })
+      })
       const failedMessage = (command, error) => {
         trace('message.failed', { requestId: command?.requestId, error: String(error) })
         if (current() && command?.event === 'command' && command.requestId) {

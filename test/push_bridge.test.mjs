@@ -83,3 +83,71 @@ test('abandoned native editor mutations reject newer work promptly until the mut
   assert.throws(()=>editor.checkIdle(),/earlier command/)
   release();await old;assert.doesNotThrow(()=>editor.checkIdle())
 })
+
+test('1000 native commands reach the ComfyUI queue in order without waiting for generation', async t => {
+  t.mock.method(console, 'info', () => {})
+  const f = fixture()
+  let releaseFirst
+  const firstSubmission = new Promise(resolve => { releaseFirst = resolve })
+  const submitted = []
+  // These are queue receipts only. No generation completion event is emitted.
+  f.api.queuePrompt = async () => {
+    const prompt = f.prompt.widgets[0].value
+    if (!submitted.length) await firstSubmission
+    submitted.push(prompt)
+    return { prompt_id: `queued-${submitted.length}` }
+  }
+  const callbacks = []
+  let now = 0
+  const bridge = startPushBridge({ ...f, sessionId: 's', tabId: 't', WebSocketImpl: f.Socket,
+    windowImpl: f.browser, schedule(callback, delay) { callbacks.push({ callback, due: now + delay }); return callbacks.length }, unschedule() {} })
+  const socket = f.Socket.all[0]; socket.open()
+  try {
+    const connectionId = socket.sent[0].bridgeConnectionId
+    for (let i = 0; i < 1000; i++) {
+      const event = new Event('anim_bridge_command')
+      event.detail = { event: 'command', commandId: `r${i}`, requestId: `r${i}`, type: 'run',
+        workflowId: 'one', name: 'One', parameters: { prompt: `Scene ${i}` },
+        bridgeSessionId: 's', bridgeTabId: 't', bridgeConnectionId: connectionId }
+      f.api.dispatchEvent(event)
+    }
+    // The recent-ID cache has rolled over, but the first command is still
+    // pending. Receiving it again must not replace or execute it twice.
+    socket.receive({ event: 'command', commandId: 'r0', requestId: 'r0', type: 'run',
+      workflowId: 'one', name: 'One', parameters: { prompt: 'Duplicate must not run' } })
+    await tick()
+    // Advance the supplied clock by eight hours while the first native queue
+    // submission is unresolved. Waiting commands must not expire or be rejected.
+    now += 8 * 60 * 60 * 1000
+    for (const timer of callbacks.filter(timer => timer.due <= now)) timer.callback()
+    assert.equal(socket.sent.filter(message => message.event === 'result').length, 0)
+    assert.equal(callbacks.length, 0)
+    releaseFirst()
+    await tick()
+    const results = socket.sent.filter(message => message.event === 'result')
+    assert.equal(results.length, 1000)
+    assert.deepEqual(submitted, Array.from({ length: 1000 }, (_, i) => `Scene ${i}`))
+    assert.deepEqual(results.map(result => [result.requestId, result.promptId]),
+      Array.from({ length: 1000 }, (_, i) => [`r${i}`, `queued-${i + 1}`]))
+    assert.ok(results.every(result => result.applied && !result.error))
+  } finally { bridge.stop() }
+})
+
+test('invalid input in a batch does not prevent later valid queue submissions', async () => {
+  const f = fixture()
+  const bridge = startPushBridge({ ...f, sessionId: 's', tabId: 't', WebSocketImpl: f.Socket, windowImpl: f.browser })
+  const socket = f.Socket.all[0]; socket.open()
+  try {
+    for (const [id, name] of [['bad', 'Renamed'], ['good', 'One']]) {
+      socket.receive({ event: 'command', commandId: id, requestId: id, type: 'run',
+        workflowId: 'one', name, parameters: { prompt: id } })
+    }
+    await tick()
+    const results = socket.sent.filter(message => message.event === 'result')
+    assert.equal(results.length, 2)
+    assert.match(results[0].error, /name or ID changed/)
+    assert.equal(results[1].requestId, 'good')
+    assert.equal(results[1].promptId, 'p1')
+    assert.equal(f.runs, 1)
+  } finally { bridge.stop() }
+})
