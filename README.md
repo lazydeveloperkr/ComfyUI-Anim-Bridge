@@ -51,6 +51,41 @@ git clone https://github.com/lazydeveloperkr/ComfyUI-Anim-Bridge.git comfyui_ani
 Place this repository at `ComfyUI/custom_nodes/comfyui_anim_bridge`, restart
 ComfyUI, and reload every open ComfyUI browser tab.
 
+## Install MiniMax H3 latent-upscaler requirements
+
+Pass the ComfyUI folder that contains `custom_nodes` and `models`. Git and
+curl are required (Windows also uses the built-in `curl.exe`, `certutil`,
+and PowerShell). The script clones
+`Comfyui_Minimax_h3_latent_Upscaler` and downloads the LoRA, latent upscaler,
+and RIFE files used by
+`workflows/minimax_h3_r2v_Latent Upscaler-fps-up_Anim.json` (about 2.7 GB).
+Existing clones and nonempty model files are left in place. Restart ComfyUI
+when it finishes. It does not download the base MiniMax H3 UNET, VAEs, or
+text encoder.
+
+Windows CMD:
+
+```bat
+install_requirements.bat "C:\path\to\ComfyUI"
+```
+
+macOS/Linux:
+
+```bash
+bash install_requirements.sh "/path/to/ComfyUI"
+```
+
+Add `/with-mystic07` or `--with-mystic07` to also download the optional
+derivative diffusion model (about 20 GB) into `models/diffusion_models/`:
+
+```bat
+install_requirements.bat "C:\path\to\ComfyUI" /with-mystic07
+```
+
+```bash
+bash install_requirements.sh "/path/to/ComfyUI" --with-mystic07
+```
+
 ## Read Bridge diagnostics
 
 Restart ComfyUI after updating Python files, then reload the ComfyUI frontend
