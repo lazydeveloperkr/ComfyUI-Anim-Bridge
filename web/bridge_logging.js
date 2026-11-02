@@ -1,5 +1,5 @@
 // Small diagnostic events only. Never serialize commands, graphs or prompts.
-export const FRONTEND_BUILD = '13-native1'
+export const FRONTEND_BUILD = '13-bulk1'
 export function trace(stage, fields = {}) {
   const safe = value => String(value || '')
     .replace(/(bearer\s+)\S+/ig, '$1<redacted>')

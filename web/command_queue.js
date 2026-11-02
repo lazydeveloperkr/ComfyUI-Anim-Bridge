@@ -1,12 +1,8 @@
 // The queue waits for cancellation, not for a foreign Promise to settle. A
 // cancelled operation cannot release or complete a newer operation's slot.
 export class CommandQueue {
-  constructor(execute, complete, { schedule = setTimeout, unschedule = clearTimeout, timeout = 30000 } = {}) {
-    Object.assign(this, { execute, complete, timeout })
-    // Browser timer functions reject a CommandQueue receiver (Illegal invocation).
-    // Invoke the captured functions without turning them into queue methods.
-    this.schedule = (callback, delay) => schedule(callback, delay)
-    this.unschedule = (timer) => unschedule(timer)
+  constructor(execute, complete) {
+    Object.assign(this, { execute, complete })
     this.jobs = new Map()
     this.pending = []
     this.running = null
@@ -14,15 +10,10 @@ export class CommandQueue {
   }
 
   enqueue(command) {
-    if (this.closed) return
-    if (this.jobs.size >= 32) {
-      this.complete(command, null, new Error('Too many pending commands'))
-      return
-    }
+    if (this.closed || this.jobs.has(command.commandId)) return
     const job = { command, abort: new AbortController() }
     this.jobs.set(command.commandId, job)
     this.pending.push(job)
-    job.timer = this.schedule(() => this.cancel(command.commandId, 'Command timed out; retry or reload the ComfyUI browser.'), this.timeout)
     this.next()
   }
 
@@ -36,7 +27,6 @@ export class CommandQueue {
   finish(job, value, error) {
     if (this.jobs.get(job.command.commandId) !== job) return
     this.jobs.delete(job.command.commandId)
-    this.unschedule(job.timer)
     this.pending = this.pending.filter(item => item !== job)
     if (this.running === job) this.running = null
     if (!this.closed) this.complete(job.command, value, error)
@@ -55,7 +45,6 @@ export class CommandQueue {
   close() {
     this.closed = true
     for (const job of this.jobs.values()) {
-      this.unschedule(job.timer)
       job.abort.abort(new Error('Anim Bridge connection closed'))
     }
     this.jobs.clear()

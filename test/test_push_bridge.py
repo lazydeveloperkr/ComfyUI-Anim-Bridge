@@ -2,6 +2,7 @@ import asyncio
 import importlib.util
 import pathlib
 import unittest
+from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location('bridge_protocol', pathlib.Path(__file__).parents[1] / 'bridge_protocol.py')
 module = importlib.util.module_from_spec(spec)
@@ -75,6 +76,84 @@ class ProtocolTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([r['promptId'] for r in await asyncio.gather(*tasks)],[f'p{i}' for i in range(30)])
         self.assertEqual(self.history_reads,[])
         self.assertEqual(len(self.bridge.jobs),30)
+
+    async def test_1000_pending_commands_and_tracked_jobs_do_not_block_submission(self):
+        count = 1000
+        tasks = [await self.request(str(i)) for i in range(count)]
+        self.assertEqual(len(self.bridge.pending), count)
+        self.assertEqual(len(self.browser.messages), count)
+        for i in reversed(range(count)):
+            self.bridge.result(self.browser, {'requestId': str(i), 'applied': True, 'promptId': f'p{i}'})
+        results = await asyncio.gather(*tasks)
+        self.assertEqual([result['promptId'] for result in results], [f'p{i}' for i in range(count)])
+        self.assertEqual(len(self.bridge.jobs), count)
+        # None of the earlier generations has finished. New work must still queue.
+        extra = await self.request('extra')
+        self.bridge.result(self.browser, {'requestId': 'extra', 'applied': True, 'promptId': 'extra'})
+        self.assertEqual((await extra)['promptId'], 'extra')
+        for prompt_id in list(self.bridge.jobs):
+            self.bridge.execution(prompt_id, 'Fixture completed')
+        await asyncio.gather(*self.bridge.finalizers)
+        self.assertFalse(self.bridge.pending)
+        self.assertFalse(self.bridge.jobs)
+        completed = [message for message in self.owner.messages if message['event'] == 'completed']
+        self.assertEqual(len(completed), count + 1)
+        self.assertEqual(len({message['promptId'] for message in completed}), count + 1)
+
+    async def test_accepted_batch_survives_sender_disconnect_before_dispatch_and_receipts(self):
+        count = 1000
+        for i in range(count):
+            self.bridge.submit(self.owner, {'requestId': str(i), 'type': 'run', **self.selected,
+                                           'parameters': {'prompt': f'Scene {i}'}}, lambda _: None)
+        # Disconnect even before server-owned tasks get their first turn.
+        await self.bridge.disconnect(self.owner)
+        await asyncio.sleep(0)
+        self.assertEqual(len(self.bridge.pending), count)
+        self.assertEqual([message['parameters']['prompt'] for message in self.browser.messages],
+                         [f'Scene {i}' for i in range(count)])
+        # Another disconnect while receipts are pending must not cancel them.
+        await self.bridge.disconnect(self.owner)
+        for i in range(count):
+            self.bridge.result(self.browser, {'requestId': str(i), 'applied': True, 'promptId': f'p{i}'})
+        await asyncio.gather(*self.bridge.commands)
+        self.assertFalse(self.bridge.commands)
+        self.assertFalse(self.bridge.pending)
+        self.assertEqual(len(self.bridge.jobs), count)
+        self.assertTrue(all(not job['owners'] for job in self.bridge.jobs.values()))
+        self.assertFalse(any(message['event'] == 'cancel' for message in self.browser.messages))
+        self.assertFalse(self.owner.messages)
+
+    async def test_submit_reports_invalid_target_without_losing_next_command(self):
+        self.bridge.submit(self.owner, {'requestId': 'bad', 'type': 'run', **self.selected,
+                                       'name': 'wrong', 'parameters': {}}, lambda _: None)
+        self.bridge.submit(self.owner, {'requestId': 'good', 'type': 'apply', **self.selected,
+                                       'parameters': {}}, lambda _: None)
+        await asyncio.sleep(0)
+        self.assertEqual(self.owner.messages[0]['requestId'], 'bad')
+        self.assertIn('does not match', self.owner.messages[0]['error'])
+        self.bridge.result(self.browser, {'requestId': 'good', 'applied': True})
+        await asyncio.gather(*self.bridge.commands)
+        self.assertEqual(self.owner.messages[-1], {'event': 'result', 'requestId': 'good', 'applied': True})
+
+    async def test_default_command_wait_has_no_automatic_timeout(self):
+        with patch.object(module.asyncio, 'wait_for', side_effect=AssertionError('Unexpected deadline')):
+            task = await self.request()
+            self.assertFalse(task.done())
+            self.bridge.result(self.browser, {'requestId': 'r', 'applied': True, 'promptId': 'p'})
+            self.assertEqual((await task)['promptId'], 'p')
+
+    async def test_live_requests_remain_deduplicated_after_recent_id_cache_rolls_over(self):
+        tasks = [await self.request(str(i)) for i in range(1100)]
+        self.assertNotIn('0', self.bridge.seen)
+        duplicate = {'requestId': '0', 'type': 'run', **self.selected, 'parameters': {}}
+        with self.assertRaisesRegex(ValueError, 'Duplicate'):
+            await self.bridge.command(self.owner, duplicate, lambda _: None)
+        for i in range(1100):
+            self.bridge.result(self.browser, {'requestId': str(i), 'applied': True, 'promptId': f'p{i}'})
+        await asyncio.gather(*tasks)
+        with self.assertRaisesRegex(ValueError, 'Duplicate'):
+            await self.bridge.command(self.owner, duplicate, lambda _: None)
+        self.assertEqual(len(self.browser.messages), 1100)
 
     async def test_native_dispatch_targets_one_client_and_connection(self):
         delivered = []

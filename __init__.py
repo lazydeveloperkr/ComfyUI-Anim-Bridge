@@ -7,7 +7,6 @@ import time
 import uuid
 
 from aiohttp import web, WSMsgType
-import asyncio
 
 from .bridge_protocol import PushBridge, trace
 from .execution_events import install_execution_observer
@@ -149,18 +148,6 @@ async def anim_bridge_events(request):
     socket = web.WebSocketResponse(max_msg_size=1024 * 1024)
     await socket.prepare(request)
     trace('socket.connected', role=role, tabId=key[1], frontendBuild=request.query.get('frontend_build', 'unknown'))
-    tasks = set()
-    async def command(payload):
-        try:
-            result = await _push.command(socket, payload, _load_image_sample)
-            await _push.send(socket, {'event': 'result', **result})
-        except asyncio.TimeoutError:
-            trace('command.failed', requestId=str(payload.get('requestId')), error='Browser command timed out after 30 seconds')
-            await _push.send(socket, {'event': 'result', 'requestId': payload.get('requestId'),
-                'error': 'The ComfyUI browser did not finish the request within 30 seconds. Check its connection; execution was not retried.'})
-        except Exception as error:
-            trace('command.failed', requestId=str(payload.get('requestId')), error=str(error))
-            await _push.send(socket, {'event': 'result', 'requestId': payload.get('requestId'), 'error': str(error)})
     if role == 'browser':
         await _push.attach(key, socket)
     else:
@@ -197,11 +184,7 @@ async def anim_bridge_events(request):
                                   promptId=str(payload.get('promptId') or ''),
                                   error=str(payload.get('error') or ''))
                 elif event == 'command':
-                    if len(tasks) >= 32:
-                        raise ValueError('Too many requests')
-                    task = asyncio.create_task(command(payload))
-                    tasks.add(task)
-                    task.add_done_callback(tasks.discard)
+                    _push.submit(socket, payload, _load_image_sample)
                 elif event == 'watch' and isinstance(payload.get('promptId'), str):
                     await _push.watch(socket, payload['promptId'])
                 elif event == 'cancel':
@@ -217,10 +200,6 @@ async def anim_bridge_events(request):
             await _push.detach(key, socket)
         else:
             await _push.disconnect(socket)
-        for task in tasks:
-            task.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
     return socket
 
 
