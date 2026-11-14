@@ -194,14 +194,14 @@ workflow decides what values are valid for the selected model.
 
 ### Sequence output name contract
 
-`Anim Sequence Output` receives one output file name prefix through its
-`filename_prefix` STRING widget and returns the same STRING. Anim builds the
-prefix from the Sequence number and name for every run, for example
-`S001_Opening` or `S012_거실_공놀이`, and removes characters that are unsafe in
-file names or that ComfyUI treats specially, such as `/`, `\`, `:`, and `%`.
-The save node then adds its usual counter, so repeated runs of the same
-Sequence produce `S012_거실_공놀이_00001.mp4`, `S012_거실_공놀이_00002.mp4`, and
-so on.
+When an incoming prefix starts with a Sequence number such as `S001_`, the
+Bridge replaces that number with a UTC timestamp at the end of the Sequence
+name (`YYYYMMDD_HHMMSS_mmm`). For example, `S001_Opening` becomes
+`Opening_20261114_031530_042`. Prefixes without a Sequence number keep their
+order. The Bridge replaces unsafe filename characters before writing the
+`filename_prefix` widget of `Anim Sequence Output`. That node passes the value
+to the save node, which adds its usual counter, for example
+`Opening_20261114_031530_042_00001_.mp4`.
 
 The node never saves a file itself; the workflow's existing save node still
 decides the format and location. Keep the workflow a shared template: do not

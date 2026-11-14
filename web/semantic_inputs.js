@@ -83,6 +83,13 @@ export function applySemanticInputs(app, workflow, request) {
     }
     scene = [...sentences, scene].join(' ')
   }
+  const filenamePrefix = String(request.filenamePrefix || 'ComfyUI')
+    .replace(/^S\d{3,}_(.+)$/, (_, name) => {
+      const timestamp = new Date().toISOString().slice(0, -1)
+        .replace(/[-:]/g, '').replace(/[T.]/g, '_')
+      return `${name}_${timestamp}`
+    })
+    .replace(/[\\/:*?"<>|%]/g, '_')
   let promptInputs = 0
   for (const input of inputs) {
     let value
@@ -100,7 +107,7 @@ export function applySemanticInputs(app, workflow, request) {
       value = Number(request[input.kind])
       if (!Number.isInteger(value) || value < 256 || value > 4096 || value % 32) throw new Error('Image dimensions must be multiples of 32 between 256 and 4096.')
     } else if (input.kind === 'filenamePrefix') {
-      value = String(request.filenamePrefix || 'ComfyUI').replace(/[\\/:*?"<>|%]/g, '_')
+      value = filenamePrefix
     } else if (input.slotId) {
       value = slotFiles[input.slotId] || ''
       if (input.required && !value) throw new Error(`Required image ${input.slotId} is missing.`)

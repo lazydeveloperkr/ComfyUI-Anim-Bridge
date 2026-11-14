@@ -1,6 +1,6 @@
 import { CommandQueue, EditorOperations } from './command_queue.js?v=13-bulk1'
 import { loadInstalledSample, queueAndCapturePromptId } from './input_contract.js?v=13-bulk1'
-import { applySemanticInputs } from './semantic_inputs.js?v=13-bulk1'
+import { applySemanticInputs } from './semantic_inputs.js?v=13-filename1'
 import { trace as consoleTrace, FRONTEND_BUILD } from './bridge_logging.js?v=13-bulk1'
 
 export function workflowMetadata(store) {

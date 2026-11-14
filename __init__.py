@@ -280,8 +280,8 @@ class AnimSequenceOutput:
     FUNCTION = 'emit'
     CATEGORY = 'Anim/Inputs'
     DESCRIPTION = (
-        'Receives the output file name prefix Anim builds from the Sequence '
-        'number and name, such as S001_Opening. Connect it to the '
+        'Receives the output filename prefix from Anim Bridge. Sequence prefixes '
+        'use the name followed by a UTC timestamp. Connect it to the '
         'filename_prefix input of the existing save node; this node does not '
         'save files.'
     )

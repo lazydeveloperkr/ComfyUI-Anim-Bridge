@@ -12,6 +12,25 @@ test('semantic prompt, duration, dimensions and prefix are applied without a gra
   assert.equal(value(nodes[2],'width'),1024); assert.equal(value(nodes[3],'filename_prefix'),'S01_name')
 })
 
+test('sequence prefixes start with the name and end with one UTC timestamp per request', t => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-14T03:15:30.042Z') })
+  const prompt = node(1, 'AnimPromptInput', { prompt: '' })
+  const first = node(2, 'AnimSequenceOutput', { filename_prefix: '' })
+  const second = node(3, 'AnimSequenceOutput', { filename_prefix: '' })
+  const editor = app([prompt, first, second])
+
+  applySemanticInputs(editor, {}, { prompt: 'Scene', filenamePrefix: 'S001_K01_명_칼로리야' })
+  assert.equal(value(first, 'filename_prefix'), 'K01_명_칼로리야_20261114_031530_042')
+  assert.equal(value(second, 'filename_prefix'), value(first, 'filename_prefix'))
+
+  t.mock.timers.tick(1)
+  applySemanticInputs(editor, {}, { prompt: 'Scene', filenamePrefix: 'S1000_장면:이름' })
+  assert.equal(value(first, 'filename_prefix'), '장면_이름_20261114_031530_043')
+
+  applySemanticInputs(editor, {}, { prompt: 'Scene', filenamePrefix: 'Opening_S001' })
+  assert.equal(value(first, 'filename_prefix'), 'Opening_S001')
+})
+
 test('ordered references compact encoder tokens and clear missing references', () => {
   const nodes = [node(1,'AnimTextInput',{text_id:'scene',text:'old'}),node(2,'AnimImageInput',{image_id:'reference_1',image:'old.png'}),node(3,'AnimImageInput',{image_id:'reference_2',image:'old.png'}),node(4,'TextEncodeQwenImage21',{},[{name:'images.image_4',link:1},{name:'images.image_2',link:2}])]
   const a=app(nodes,{1:{origin_id:2,origin_slot:0},2:{origin_id:3,origin_slot:0}})
